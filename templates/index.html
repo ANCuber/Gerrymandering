@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hexagonal Voting System</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121214; color: #e1e1e6; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 900px; width: 100%; text-align: center; }
+        .box { background: #202024; border: 1px solid #323238; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin-bottom: 20px; }
+        input[type="text"], input[type="password"] { width: 80%; max-width: 300px; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #41414c; background: #121214; color: #fff; font-size: 16px; }
+        .btn { background: #04d361; color: #000; font-weight: bold; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        .btn:hover { background: #02b852; }
+        .logout-link { color: #a8a8b3; text-decoration: none; margin-left: 15px; }
+        .error { color: #f75a68; margin-bottom: 15px; }
+        
+        /* Hexagon Matrix Setup matching image_a3bcbf.jpg structure */
+        .grid-container { 
+            width: 100%;
+            overflow-x: auto;
+            padding: 40px 0;
+            display: flex;
+            justify-content: center;
+        }
+        .hex-grid { 
+            display: grid; 
+            grid-template-columns: repeat(30, 26px);
+        }
+        .hex-row {
+            display: flex;
+            margin-top: -13px;
+        }
+        .hex { 
+            width: 48px;
+            height: 55px;
+
+            background: #29292e;
+
+            clip-path: polygon(
+                50% 0%,
+                100% 25%,
+                100% 75%,
+                50% 100%,
+                0% 75%,
+                0% 25%
+            );
+            
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+
+            font-size: 10px;
+            cursor: pointer;
+            user-select: none;
+
+            transition: all 0.15s ease;
+
+            margin-right: 4px;
+
+            position: relative;
+        }
+        .hex:hover {
+            background: #41414c;
+            transform: scale(1.05);
+            z-index: 100;
+        }
+        .hex:active {
+            transform: scale(0.95);
+        }
+
+        .hex.voted {
+            background: #00875f;
+            color: white;
+        }
+        .hex span.total {
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 2px;
+        }
+        .hex span.user-spent {
+            font-size: 9px;
+            opacity: 0.8;
+            background: rgba(0,0,0,0.3);
+            padding: 1px 4px;
+            border-radius: 10px;
+        }
+
+        /* Row offset rules to create layout matching image_a3bcbf.jpg */
+        /* Every second row offsets horizontal entry alignments */
+        .r1 {.hex { grid-column-start: 5; }} .r2 {.hex { grid-column-start: 4; }} .r3 {.hex { grid-column-start: 3; }}
+        .r4 {.hex { grid-column-start: 2; }} .r5 {.hex { grid-column-start: 1; }} .r6 {.hex { grid-column-start: 2; }}
+        .r7 {.hex { grid-column-start: 1; }} .r8 {.hex { grid-column-start: 2; }} .r9 {.hex { grid-column-start: 1; }}
+        .r10 {.hex { grid-column-start: 2; }} .r11 {.hex { grid-column-start: 1; }} .r12 {.hex { grid-column-start: 2; }}
+        .r13 {.hex { grid-column-start: 1; }} .r14 {.hex { grid-column-start: 2; }} .r15 {.hex { grid-column-start: 3; }}
+        .r16 {.hex { grid-column-start: 4; }} .r17 {.hex { grid-column-start: 5; }}
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>⬡ Hexagonal Strategy Arena ⬡</h1>
+
+        {% if not logged_in %}
+        <!-- LOGIN SCREEN -->
+        <div class="box">
+            <h3>Enter Secure Game Space</h3>
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+            <form action="/login" method="POST">
+                <input type="text" name="username" placeholder="Username" required autocomplete="off"><br>
+                <input type="password" name="secret" placeholder="Secret Keyword" required><br><br>
+                <button type="submit" class="btn">Verify identity</button>
+            </form>
+        </div>
+        {% else %}
+        
+        <!-- DASHBOARD -->
+        <div class="box">
+            <p>Welcome, <strong>{{ username }}</strong>! | Tickets Remaining: <strong id="ticket-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> / 100 <a href="/logout" class="logout-link">Exit</a></p>
+            <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click</strong> to allocate ticket. <strong>Hold Click (1s)</strong> to completely wipe votes from a cell.</p>
+        </div>
+
+        <!-- HEXAGONAL LAYER GRID GENERATOR -->
+        <div class="grid-container">
+            <div class="hex-grid">
+                {% set side = 8 %}
+
+                {% set row_lengths = [
+                    8, 9, 10, 11, 12, 13, 14, 15,
+                    14, 13, 12, 11, 10, 9, 8
+                ] %}
+
+                {% set row_offsets = [
+                    3.5, 3, 2.5, 2, 1.5, 1, 0.5, 0,
+                    0.5, 1, 1.5, 2, 2.5, 3, 3.5
+                ] %}
+
+                {% for r in range(1, 16) %}
+                <div class="hex-row"
+                     style="margin-left: calc({{ row_offsets[r-1] }} * 52px);">
+
+                    {% set count = row_lengths[r-1] %}
+
+                    {% for c in range(1, count + 1) %}
+                        {% set cell_id = "R" ~ r ~ "C" ~ c %}
+                        {% set total_votes = global_votes.get(cell_id, 0) %}
+                        {% set my_votes = user_votes.get(cell_id, 0) %}
+
+                        <div class="hex {% if my_votes > 0 %}voted{% endif %}"
+                             id="{{ cell_id }}"
+                             data-cell="{{ cell_id }}">
+
+                            <span class="total"
+                                  id="total-{{ cell_id }}">
+                                {{ total_votes if total_votes > 0 else '' }}
+                            </span>
+
+                            <span class="user-spent"
+                                  id="user-{{ cell_id }}"
+                                  style="display:{% if my_votes > 0 %}inline{% else %}none{% endif %};">
+                                +{{ my_votes }}
+                            </span>
+
+                        </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Execution of Click vs Long-Press Actions
+        document.querySelectorAll('.hex').forEach(hexElement => {
+            let pressTimer;
+            let isLongPress = false;
+
+            const startPress = (e) => {
+                isLongPress = false;
+                pressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    handleVoteAction(hexElement.dataset.cell, 'clear');
+                }, 800); // 800ms window triggers system deletion
+            };
+
+            const endPress = (e) => {
+                clearTimeout(pressTimer);
+                if (!isLongPress && e.type === 'mouseup') {
+                    handleVoteAction(hexElement.dataset.cell, 'add');
+                }
+            };
+
+            // Desktop Mouse Event hooks
+            hexElement.addEventListener('mousedown', startPress);
+            hexElement.addEventListener('mouseup', endPress);
+            
+            // Mobile Interaction Event hooks
+            hexElement.addEventListener('touchstart', startPress, {passive: true});
+            hexElement.addEventListener('touchend', endPress, {passive: true});
+        });
+
+        function handleVoteAction(cellId, actionType) {
+            fetch('/api/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cell_id: cellId, action: actionType })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Update DOM states immediately
+                    document.getElementById('ticket-counter').innerText = data.remaining;
+                    
+                    const totalSpan = document.getElementById(`total-${cellId}`);
+                    const userSpan = document.getElementById(`user-${cellId}`);
+                    const hexDiv = document.getElementById(cellId);
+                    
+                    // Modify display labels inside the modified hex grid cell
+                    totalSpan.innerText = data.cell_total > 0 ? data.cell_total : '';
+                    if (data.cell_user > 0) {
+                        userSpan.innerText = `+${data.cell_user}`;
+                        userSpan.style.display = 'inline';
+                        hexDiv.classList.add('voted');
+                    } else {
+                        userSpan.style.display = 'none';
+                        hexDiv.classList.remove('voted');
+                    }
+                } else {
+                    alert(data.error);
+                }
+            })
+            .catch(err => console.error("Communication error:", err));
+        }
+    </script>
+</body>
+</html>
