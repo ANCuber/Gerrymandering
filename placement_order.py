@@ -1,0 +1,147 @@
+import json
+
+HEX_DIRECTIONS = [(1, 0), (0, 1), (-1, -1), (-1, 0), (0, -1), (1, -1)]
+ROW_LENGTHS = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8]
+
+
+def rotate_left(coord):
+    x, y = coord
+    return (x + y, -x)
+
+
+def reflect(coord):
+    x, y = coord
+    return (x, -x - y)
+
+
+def canonical_shape(shape):
+    def normalize(coords):
+        xs = [x for x, y in coords]
+        ys = [y for x, y in coords]
+        min_x = min(xs)
+        min_y = min(ys)
+        translated = sorted((x - min_x, y - min_y) for x, y in coords)
+        return tuple(translated)
+
+    orientations = []
+    current = shape
+    for _ in range(6):
+        orientations.append(normalize(current))
+        current = {rotate_left(c) for c in current}
+
+    reflected = {reflect(c) for c in shape}
+    current = reflected
+    for _ in range(6):
+        orientations.append(normalize(current))
+        current = {rotate_left(c) for c in current}
+
+    return tuple(min(orientations))
+
+
+def expand_polyhexes(shapes):
+    next_shapes = set()
+    for shape in shapes:
+        for x, y in shape:
+            for dx, dy in HEX_DIRECTIONS:
+                neighbor = (x + dx, y + dy)
+                if neighbor not in shape:
+                    new_shape = set(shape)
+                    new_shape.add(neighbor)
+                    next_shapes.add(canonical_shape(new_shape))
+    return next_shapes
+
+
+def generate_free_pentahexes():
+    shapes = {canonical_shape({(0, 0)})}
+    for _ in range(1, 5):
+        shapes = expand_polyhexes(shapes)
+    free_shapes = sorted(shapes)
+    return free_shapes
+
+
+def rotate_shape(coords, orientation):
+    rotated = set(coords)
+    for _ in range(orientation % 6):
+        rotated = {rotate_left(c) for c in rotated}
+    return rotated
+
+
+def get_board_cells():
+    cells = []
+    for r, length in enumerate(ROW_LENGTHS, start=1):
+        y = r - 8
+        x_min = max(-7, 1 - r)
+        for c in range(1, length + 1):
+            x = x_min + c - 1
+            cells.append((r, c, x, y))
+    return cells
+
+_ALL_CELLS = get_board_cells()
+_CELL_ID_BY_AXIAL = {(x, y): f'R{r}C{c}' for r, c, x, y in _ALL_CELLS}
+_AXIAL_BY_CELL_ID = {f'R{r}C{c}': (x, y) for r, c, x, y in _ALL_CELLS}
+
+
+def axial_to_cell_id(x, y):
+    return _CELL_ID_BY_AXIAL.get((x, y))
+
+
+def cell_id_to_axial(cell_id):
+    return _AXIAL_BY_CELL_ID.get(cell_id)
+
+
+def generate_shape_catalog():
+    # Use a larger number of connected pentahex cluster cases.
+    free_shapes = generate_free_pentahexes()
+    selected_shapes = free_shapes[:12]
+    catalog = []
+    for index, shape in enumerate(selected_shapes, start=1):
+        shape_id = f'P{index}'
+        catalog.append({'id': shape_id, 'coords': list(shape)})
+    return catalog
+
+SHAPE_CATALOG = generate_shape_catalog()
+SHAPE_ID_MAP = {shape['id']: shape for shape in SHAPE_CATALOG}
+SHAPE_IDS = [shape['id'] for shape in SHAPE_CATALOG]
+
+
+def placement_cells(shape_id, anchor_cell_id, orientation=0):
+    if shape_id not in SHAPE_ID_MAP:
+        return []
+    anchor = cell_id_to_axial(anchor_cell_id)
+    if anchor is None:
+        return []
+    rotated = rotate_shape(SHAPE_ID_MAP[shape_id]['coords'], orientation)
+    cells = []
+    for x, y in rotated:
+        target = (anchor[0] + x, anchor[1] + y)
+        target_id = axial_to_cell_id(*target)
+        if target_id is None:
+            return []
+        cells.append(target_id)
+    return cells
+
+
+def compute_allocation_variance(user_votes):
+    cell_ids = [cell_id for _, _, cell_id in sorted(
+        [(r, c, f'R{r}C{c}') for r, length in enumerate(ROW_LENGTHS, start=1) for c in range(1, length + 1)],
+        key=lambda t: (t[0], t[1])
+    )]
+    counts = [user_votes.get(cell_id, 0) for cell_id in cell_ids]
+    if not counts:
+        return 0.0
+    mean = sum(counts) / len(counts)
+    variance = sum((count - mean) ** 2 for count in counts) / len(counts)
+    return variance
+
+
+def order_users_by_variance(user_votes_map):
+    scored = []
+    for username, votes in user_votes_map.items():
+        variance = compute_allocation_variance(votes)
+        scored.append((variance, username))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [username for _, username in scored]
+
+
+def get_shape_choices():
+    return [{'id': shape['id'], 'label': shape['id']} for shape in SHAPE_CATALOG]

@@ -39,12 +39,58 @@ def init_db():
                 value TEXT
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS cluster_placements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                shape_id TEXT,
+                anchor_cell_id TEXT,
+                orientation INTEGER,
+                cells TEXT,
+                winner TEXT,
+                cluster_score INTEGER DEFAULT 0,
+                UNIQUE(username, shape_id)
+            )
+        ''')
+        rows = conn.execute("PRAGMA table_info(cluster_placements)").fetchall()
+        if rows and not any(col['name'] == 'id' for col in rows):
+            conn.execute('ALTER TABLE cluster_placements RENAME TO cluster_placements_old')
+            conn.execute('''
+                CREATE TABLE cluster_placements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT,
+                    shape_id TEXT,
+                    anchor_cell_id TEXT,
+                    orientation INTEGER,
+                    cells TEXT,
+                    winner TEXT,
+                    cluster_score INTEGER DEFAULT 0,
+                    UNIQUE(username, shape_id)
+                )
+            ''')
+            conn.execute('''
+                INSERT INTO cluster_placements (username, shape_id, anchor_cell_id, orientation, cells, winner, cluster_score)
+                SELECT username, shape_id, anchor_cell_id, orientation, cells, winner, cluster_score
+                FROM cluster_placements_old
+            ''')
+            conn.execute('DROP TABLE cluster_placements_old')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS cluster_scores (
+                username TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
+            )
+        ''')
         conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('reveal_mode', 'false')")
+        conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('final_stage', 'false')")
 
         for user in USER_REGISTRY:
             conn.execute(
                 "INSERT OR IGNORE INTO user_allowances (username, total_allowance) VALUES (?, ?)",
                 (user, TOTAL_ALLOWANCE)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO cluster_scores (username, score) VALUES (?, 0)",
+                (user,)
             )
         conn.commit()
 
@@ -63,12 +109,133 @@ def get_user_remaining_ballots(username):
         return max(0, allowance - spent)
 
 
-def is_reveal_mode():
+def get_config_value(key, default=None):
     with get_db() as conn:
-        row = conn.execute("SELECT value FROM system_config WHERE key = 'reveal_mode'").fetchone()
-        if not row:
-            return False
-        return str(row['value']).lower() in ('true', '1', 'yes')
+        row = conn.execute('SELECT value FROM system_config WHERE key = ?', (key,)).fetchone()
+        return row['value'] if row else default
+
+
+def set_config_value(key, value):
+    with get_db() as conn:
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', (key, value))
+        conn.commit()
+
+
+def is_reveal_mode():
+    value = get_config_value('reveal_mode', 'false')
+    return str(value).lower() in ('true', '1', 'yes')
+
+
+def is_final_stage_active():
+    value = get_config_value('final_stage', 'false')
+    return str(value).lower() in ('true', '1', 'yes')
+
+
+def get_placement_order():
+    raw = get_config_value('placement_order', '[]')
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
+def get_placement_index():
+    raw = get_config_value('placement_index', '0')
+    try:
+        return int(raw)
+    except Exception:
+        return 0
+
+
+def get_current_placement_user():
+    order = get_placement_order()
+    index = get_placement_index()
+    if not order or index >= len(order):
+        return None
+    return order[index]
+
+
+def start_final_stage(order_list):
+    with get_db() as conn:
+        conn.execute('DELETE FROM cluster_placements')
+        conn.execute('UPDATE cluster_scores SET score = 0')
+        for user in USER_REGISTRY:
+            conn.execute('INSERT OR IGNORE INTO cluster_scores (username, score) VALUES (?, ?)', (user, 0))
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('final_stage', 'true'))
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_order', json.dumps(order_list)))
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_index', '0'))
+        conn.commit()
+
+
+def advance_placement_turn():
+    order = get_placement_order()
+    if not order:
+        return None
+    index = get_placement_index()
+    next_index = (index + 1) % len(order)
+    set_config_value('placement_index', str(next_index))
+    return order[next_index]
+
+
+def cancel_final_stage():
+    with get_db() as conn:
+        conn.execute('DELETE FROM cluster_placements')
+        conn.execute('UPDATE cluster_scores SET score = 0')
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('final_stage', 'false'))
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_order', '[]'))
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_index', '0'))
+        conn.commit()
+
+
+def get_cluster_placements():
+    with get_db() as conn:
+        rows = conn.execute('SELECT username, shape_id, anchor_cell_id, orientation, cells, winner, cluster_score FROM cluster_placements').fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                'username': row['username'],
+                'shape_id': row['shape_id'],
+                'anchor_cell_id': row['anchor_cell_id'],
+                'orientation': row['orientation'],
+                'cells': json.loads(row['cells']),
+                'winner': row['winner'],
+                'cluster_score': row['cluster_score'],
+            })
+        return result
+
+
+def get_used_shape_ids():
+    with get_db() as conn:
+        rows = conn.execute('SELECT shape_id FROM cluster_placements').fetchall()
+        return [row['shape_id'] for row in rows]
+
+
+def get_user_used_shape_ids(username):
+    with get_db() as conn:
+        rows = conn.execute('SELECT shape_id FROM cluster_placements WHERE username = ?', (username,)).fetchall()
+        return [row['shape_id'] for row in rows]
+
+
+def save_cluster_placement(username, shape_id, anchor_cell_id, orientation, cells, winner, cluster_score):
+    with get_db() as conn:
+        conn.execute(
+            'INSERT INTO cluster_placements (username, shape_id, anchor_cell_id, orientation, cells, winner, cluster_score) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (username, shape_id, anchor_cell_id, orientation, json.dumps(cells), winner, cluster_score),
+        )
+        conn.commit()
+
+
+def get_cluster_scores():
+    with get_db() as conn:
+        rows = conn.execute('SELECT username, score FROM cluster_scores').fetchall()
+        return {row['username']: row['score'] for row in rows}
+
+
+def add_cluster_score(username, score):
+    with get_db() as conn:
+        conn.execute('INSERT OR IGNORE INTO cluster_scores (username, score) VALUES (?, ?)', (username, 0))
+        conn.execute('UPDATE cluster_scores SET score = score + ? WHERE username = ?', (score, username))
+        conn.commit()
 
 
 def get_admin_snapshot():

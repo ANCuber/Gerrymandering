@@ -1,0 +1,467 @@
+{% extends 'base.html' %}
+
+{% block title %}Coconut Voting Room — Dashboard{% endblock %}
+
+{% block content %}
+    <h1>⬡ Coconut Voting Room ⬡</h1>
+    <div class="box">
+        <p>Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="/logout" class="logout-link">Exit</a></p>
+        {% if final_stage %}
+            {% if current_turn == username %}
+                <p style="font-size: 13px; color: #8d8d99; margin: 0;">🎯 Final stage active — it's your turn. Click one of the cluster tiles below to select it, then click a grid hex to choose an anchor. Double-click a shape to rotate it before placement.</p>
+            {% else %}
+                <p style="font-size: 13px; color: #8d8d99; margin: 0;">⏳ Final stage active. Waiting for <strong>{{ current_turn }}</strong> to place the next cluster.</p>
+            {% endif %}
+            <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">
+                Your score: <strong>{{ cluster_scores.get(username, 0) }}</strong>
+            </p>
+            <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">
+                Scores: {% for username, score in cluster_scores.items() %}{{ username }}: {{ score }}{% if not loop.last %}, {% endif %}{% endfor %}
+            </p>
+            {% if current_turn == username %}
+                <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>, anchor: <strong id="selected-anchor">none</strong>.</p>
+                <button id="place-cluster-button" class="btn btn-admin" disabled style="margin-top: 8px;">Place Selected Cluster</button>
+            {% endif %}
+        {% else %}
+            <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe your votes here.</p>
+        {% endif %}
+    </div>
+
+    <div class="grid-container">
+        <div class="hex-grid">
+            {% set row_lengths = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8] %}
+
+            {% for r in range(1, 16) %}
+            <div class="hex-row">
+                {% set count = row_lengths[r-1] %}
+                {% for c in range(1, count + 1) %}
+                    {% set cell_id = "R" ~ r ~ "C" ~ c %}
+
+                    {% set votes_list = all_votes_data.get(cell_id, []) %}
+                    {% set total_votes = votes_list|sum(attribute='ballots') %}
+                    {% set my_votes = user_votes.get(cell_id, 0) if user_votes is defined else 0 %}
+                    {% set show_results = username == 'admin' or reveal_mode %}
+
+                    {% set pie_gradient = "" %}
+                    {% if show_results and total_votes > 0 %}
+                        {% set ns = namespace(current_pct=0, gradient_str="conic-gradient(") %}
+                        {% for item in votes_list %}
+                            {% set item_pct = (item['ballots'] / total_votes) * 100 %}
+                            {% set next_pct = ns.current_pct + item_pct %}
+                            {% set ns.gradient_str = ns.gradient_str ~ item['color'] ~ " " ~ ns.current_pct ~ "% " ~ next_pct ~ "%" %}
+                            {% if not loop.last %}{% set ns.gradient_str = ns.gradient_str ~ ", " %}{% endif %}
+                            {% set ns.current_pct = next_pct %}
+                        {% endfor %}
+                        {% set pie_gradient = ns.gradient_str ~ ")" %}
+                    {% endif %}
+
+                    {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
+                    {% set cluster_shape = cluster_cell_shape.get(cell_id) if cluster_cell_shape is defined else None %}
+                    {% set cluster_color = cluster_cell_color.get(cell_id) if cluster_cell_color is defined else None %}
+                    <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}occupied{% endif %} {% if cluster_color %}cluster-member{% endif %}"
+                         id="{{ cell_id }}"
+                         data-cell="{{ cell_id }}"
+                         style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}{% if cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}{% if cluster_color in ['#fff', '#ffffff'] %} color: #111;{% endif %}">
+
+                        <div class="hex-content">
+                            <span class="total" id="total-{{ cell_id }}">
+                                {{ total_votes if show_results else '' }}
+                            </span>
+
+                            {% if cluster_shape %}
+                                <span class="cluster-label">{{ cluster_shape }}</span>
+                            {% endif %}
+
+                            <span class="user-spent" id="user-{{ cell_id }}"
+                                  style="display:{% if my_votes > 0 %}inline{% else %}none{% endif %};">
+                                +{{ my_votes }}
+                            </span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% if final_stage %}
+        <div class="cluster-palette" id="cluster-palette">
+            {% for shape in shape_catalog %}
+                <div class="cluster-card {% if shape.id in used_shapes %}used{% endif %}"
+                     draggable="{{ 'false' if shape.id in used_shapes else 'true' }}"
+                     data-shape-id="{{ shape.id }}"
+                     data-orientation="0"
+                     data-coords='{{ shape.coords|tojson }}'>
+                    <div class="cluster-preview"></div>
+                    <div class="cluster-name">{{ shape.id }}{% if shape.id in used_shapes %} (used){% endif %}</div>
+                    <div class="cluster-orientation">Rotation: 0</div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        const currentUser = "{{ username }}";
+        const isRevealActive = {{ 'true' if reveal_mode else 'false' }};
+        const finalStageActive = {{ 'true' if final_stage else 'false' }};
+        const isUserTurn = {{ 'true' if current_turn == username else 'false' }};
+        let selectedAnchor = null;
+        let selectedShape = null;
+        let selectedOrientation = 0;
+        let placeButton = null;
+
+        function initializeVoteActions() {
+            document.querySelectorAll('.hex').forEach(hexElement => {
+                let pressTimer; let isLongPress = false; let touchMoved = false;
+
+                const startPress = (e) => {
+                    if (e.type === 'mousedown' && 'ontouchstart' in window) return;
+                    isLongPress = false; touchMoved = false;
+                    pressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        handleVoteAction(hexElement.dataset.cell, 'clear');
+                    }, 800);
+                };
+
+                const endPress = (e) => {
+                    if (e.type === 'mouseup' && 'ontouchend' in window) return;
+                    clearTimeout(pressTimer);
+                    if (touchMoved) return;
+                    if (!isLongPress) handleVoteAction(hexElement.dataset.cell, 'add');
+                };
+
+                const cancelPress = () => clearTimeout(pressTimer);
+
+                hexElement.addEventListener('mousedown', startPress);
+                hexElement.addEventListener('mouseup', endPress);
+                hexElement.addEventListener('mouseleave', cancelPress);
+                hexElement.addEventListener('touchstart', startPress, {passive: true});
+                hexElement.addEventListener('touchend', endPress, {passive: true});
+                hexElement.addEventListener('touchmove', () => { touchMoved = true; cancelPress(); }, {passive: true});
+                hexElement.addEventListener('touchcancel', cancelPress, {passive: true});
+            });
+        }
+
+        function rotateLeft(coord) {
+            return [coord[0] + coord[1], -coord[0]];
+        }
+
+        function rotateCoords(coords, orientation) {
+            let rotated = coords.map(coord => [coord[0], coord[1]]);
+            for (let i = 0; i < (orientation % 6); i++) {
+                rotated = rotated.map(rotateLeft);
+            }
+            return rotated;
+        }
+
+        function renderShapePreview(container, coords, orientation) {
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const SQRT3 = Math.sqrt(3);
+            const rotated = rotateCoords(coords, orientation);
+            const projected = rotated.map(([q, r]) => ({ x: q * SQRT3 + r * SQRT3 / 2, y: r * 1.5 }));
+            const xs = projected.map(p => p.x);
+            const ys = projected.map(p => p.y);
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            const maxX = Math.max(...xs);
+            const maxY = Math.max(...ys);
+            const containerWidth = 90;
+            const containerHeight = 72;
+            const padding = 6;
+            const baseHexSize = 8;
+            const width = maxX - minX || 1;
+            const height = maxY - minY || 1;
+            const maxWidthPx = containerWidth - padding * 2 - baseHexSize * 2;
+            const maxHeightPx = containerHeight - padding * 2 - baseHexSize * 2;
+            const scale = Math.min(maxWidthPx / (width * baseHexSize), maxHeightPx / (height * baseHexSize), 1);
+            const hexSize = Math.max(3, baseHexSize * scale);
+            const offsetX = padding + baseHexSize + Math.max(0, ((maxWidthPx - width * baseHexSize * scale) / 2));
+            const offsetY = padding + baseHexSize + Math.max(0, ((maxHeightPx - height * baseHexSize * scale) / 2));
+            const svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
+            svg.setAttribute('xmlns', svgNS);
+            container.innerHTML = '';
+            rotated.forEach(coord => {
+                const proj = { x: coord[0] * SQRT3 + coord[1] * SQRT3 / 2, y: coord[1] * 1.5 };
+                const x = (proj.x - minX) * baseHexSize * scale + offsetX;
+                const y = (proj.y - minY) * baseHexSize * scale + offsetY;
+                const points = [];
+                for (let i = 0; i < 6; i++) {
+                    const angle = Math.PI / 180 * (60 * i - 30);
+                    points.push(`${x + Math.cos(angle) * hexSize},${y + Math.sin(angle) * hexSize}`);
+                }
+                const polygon = document.createElementNS(svgNS, 'polygon');
+                polygon.setAttribute('points', points.join(' '));
+                polygon.setAttribute('fill', '#04d361');
+                polygon.setAttribute('stroke', '#08120b');
+                polygon.setAttribute('stroke-width', '1');
+                svg.appendChild(polygon);
+            });
+            container.appendChild(svg);
+        }
+
+        function placeCluster(shapeId, anchor, orientation) {
+            if (!shapeId || !anchor) {
+                return alert('Cluster and anchor are required to place a cluster.');
+            }
+            fetch('/api/place_cluster', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shape_id: shapeId, anchor: anchor, orientation: orientation })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.error || 'Could not place cluster.');
+                }
+            })
+            .catch(err => {
+                console.error('Place cluster failed', err);
+                alert('Cluster placement failed.');
+            });
+        }
+
+        function cellIdToAxial(cellId) {
+            const match = /R(\d+)C(\d+)/.exec(cellId);
+            if (!match) return null;
+            const r = Number(match[1]);
+            const c = Number(match[2]);
+            const y = r - 8;
+            const xMin = Math.max(-7, 1 - r);
+            const x = xMin + c - 1;
+            return { x, y };
+        }
+
+        function axialToCellId(x, y) {
+            const r = y + 8;
+            if (r < 1 || r > 15) return null;
+            const xMin = Math.max(-7, 1 - r);
+            const c = x - xMin + 1;
+            const rowLengths = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8];
+            if (c < 1 || c > rowLengths[r - 1]) return null;
+            return `R${r}C${c}`;
+        }
+
+        function getPlacementCells(coords, anchorCellId, orientation) {
+            const anchor = cellIdToAxial(anchorCellId);
+            if (!anchor) return [];
+            const rotated = rotateCoords(coords, orientation);
+            return rotated.map(([dx, dy]) => axialToCellId(anchor.x + dx, anchor.y + dy)).filter(Boolean);
+        }
+
+        let currentDragData = null;
+        let highlightedCells = [];
+
+        function clearDragPreview() {
+            highlightedCells.forEach(cellId => {
+                const cellEl = document.getElementById(cellId);
+                if (cellEl) cellEl.classList.remove('drag-preview');
+            });
+            highlightedCells = [];
+        }
+
+        function clearAnchorSelection() {
+            document.querySelectorAll('.hex.selected-anchor').forEach(el => el.classList.remove('selected-anchor'));
+            selectedAnchor = null;
+            const selectedAnchorLabel = document.getElementById('selected-anchor');
+            if (selectedAnchorLabel) selectedAnchorLabel.textContent = 'none';
+            if (placeButton) placeButton.disabled = true;
+        }
+
+        function updatePlaceButtonState() {
+            if (!placeButton) return;
+            placeButton.disabled = !selectedShape || !selectedAnchor;
+        }
+
+        function renderClusterPalette() {
+            const palette = document.getElementById('cluster-palette');
+            if (!palette) return;
+            // tiny transparent image used to hide the browser drag ghost
+            const transparentImg = new Image();
+            transparentImg.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+            palette.querySelectorAll('.cluster-card').forEach(card => {
+                const coords = JSON.parse(card.dataset.coords);
+                const preview = card.querySelector('.cluster-preview');
+                const orientationLabel = card.querySelector('.cluster-orientation');
+                let orientation = parseInt(card.dataset.orientation, 10) || 0;
+                renderShapePreview(preview, coords, orientation);
+
+                // allow selecting a cluster tile for click placement
+                card.addEventListener('click', () => {
+                    if (card.classList.contains('used')) return;
+                    document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
+                    card.classList.add('selected');
+                    selectedShape = { shapeId: card.dataset.shapeId, orientation, coords };
+                    selectedOrientation = orientation;
+                    const selectedShapeLabel = document.getElementById('selected-shape');
+                    const selectedRotationLabel = document.getElementById('selected-rotation');
+                    if (selectedShapeLabel) selectedShapeLabel.textContent = card.dataset.shapeId;
+                    if (selectedRotationLabel) selectedRotationLabel.textContent = orientation;
+                    clearAnchorSelection();
+                    updatePlaceButtonState();
+                });
+
+                // always allow inspecting rotation even when not draggable
+                card.addEventListener('dblclick', () => {
+                    orientation = (orientation + 1) % 6;
+                    card.dataset.orientation = orientation;
+                    if (selectedShape && selectedShape.shapeId === card.dataset.shapeId) {
+                        selectedShape.orientation = orientation;
+                        selectedOrientation = orientation;
+                        const selectedRotationLabel = document.getElementById('selected-rotation');
+                        if (selectedRotationLabel) selectedRotationLabel.textContent = orientation;
+                    }
+                    orientationLabel.innerText = `Rotation: ${orientation}`;
+                    renderShapePreview(preview, coords, orientation);
+                });
+
+                if (!card.classList.contains('used')) {
+                    card.addEventListener('dragstart', event => {
+                        currentDragData = { shapeId: card.dataset.shapeId, orientation, coords };
+                        try {
+                            const payload = JSON.stringify({ shapeId: card.dataset.shapeId, orientation });
+                            // set both MIME types for broader browser support
+                            event.dataTransfer.setData('application/json', payload);
+                            event.dataTransfer.setData('text/plain', payload);
+                            event.dataTransfer.effectAllowed = 'copy';
+                            // hide default rectangular drag image so only hex highlights show
+                            event.dataTransfer.setDragImage(transparentImg, 0, 0);
+                        } catch (e) {
+                            // ignore if environment restricts dataTransfer operations
+                        }
+                        card.classList.add('dragging');
+                    });
+
+                    card.addEventListener('dragend', () => {
+                        currentDragData = null;
+                        clearDragPreview();
+                        card.classList.remove('dragging');
+                    });
+                }
+            });
+        }
+
+        function initializePlacementActions() {
+            document.querySelectorAll('.hex').forEach(hexElement => {
+                hexElement.addEventListener('dragenter', e => {
+                    if (!currentDragData) return;
+                    e.preventDefault();
+                });
+
+                hexElement.addEventListener('dragover', e => {
+                    if (!currentDragData) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    clearDragPreview();
+                    const cells = getPlacementCells(currentDragData.coords, hexElement.dataset.cell, currentDragData.orientation);
+                    cells.forEach(cellId => {
+                        const cellEl = document.getElementById(cellId);
+                        if (cellEl) {
+                            cellEl.classList.add('drag-preview');
+                            highlightedCells.push(cellId);
+                        }
+                    });
+                });
+
+                hexElement.addEventListener('dragleave', () => {
+                    clearDragPreview();
+                });
+
+                hexElement.addEventListener('click', () => {
+                    if (!isUserTurn || !selectedShape) return;
+                    clearAnchorSelection();
+                    selectedAnchor = hexElement.dataset.cell;
+                    hexElement.classList.add('selected-anchor');
+                    const selectedAnchorLabel = document.getElementById('selected-anchor');
+                    if (selectedAnchorLabel) selectedAnchorLabel.textContent = selectedAnchor;
+                    updatePlaceButtonState();
+                });
+
+                hexElement.addEventListener('drop', e => {
+                    e.preventDefault();
+                    clearDragPreview();
+                    let payload = null;
+                    if (currentDragData) {
+                        payload = currentDragData;
+                    } else {
+                                const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+                        if (raw) {
+                            try {
+                                payload = JSON.parse(raw);
+                            } catch (err) {
+                                payload = null;
+                            }
+                        }
+                    }
+                    if (!payload && selectedShape) {
+                        payload = selectedShape;
+                    }
+                    if (!payload) return;
+                    const shapeId = payload.shapeId || payload.shape_id;
+                    const orientation = (payload.orientation != null) ? payload.orientation : 0;
+                    placeCluster(shapeId, hexElement.dataset.cell, orientation);
+                    currentDragData = null;
+                });
+            });
+        }
+
+        function initializeFinalStage() {
+            renderClusterPalette();
+            placeButton = document.getElementById('place-cluster-button');
+            if (placeButton) {
+                placeButton.addEventListener('click', () => {
+                    if (!selectedShape || !selectedAnchor) {
+                        alert('Select a cluster and an anchor cell before placing.');
+                        return;
+                    }
+                    placeCluster(selectedShape.shapeId, selectedAnchor, selectedOrientation);
+                });
+                updatePlaceButtonState();
+            }
+            if (isUserTurn) {
+                initializePlacementActions();
+            }
+        }
+
+        if (finalStageActive) {
+            initializeFinalStage();
+        } else {
+            initializeVoteActions();
+        }
+
+        function handleVoteAction(cellId, actionType) {
+            fetch('/api/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cell_id: cellId, action: actionType })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const userSpan = document.getElementById(`user-${cellId}`);
+                    const hexDiv = document.getElementById(cellId);
+
+                    document.getElementById('ballot-counter').innerText = data.remaining;
+                    if (data.cell_user > 0) {
+                        userSpan.innerText = `+${data.cell_user}`;
+                        userSpan.style.display = 'inline';
+                        hexDiv.classList.add('user-voted');
+                    } else {
+                        userSpan.style.display = 'none';
+                        hexDiv.classList.remove('user-voted');
+                    }
+
+                    if (isRevealActive) {
+                        location.reload();
+                    }
+                } else {
+                    alert(data.error);
+                }
+            })
+            .catch(err => console.error("Communication error:", err));
+        }
+    </script>
+{% endblock %}

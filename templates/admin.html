@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}Coconut Voting Room — Admin{% endblock %}
+
+{% block content %}
+    <h1>⬡ Coconut Voting Room — Admin ⬡</h1>
+    <div class="box">
+        <p>⚡ <strong>Admin Dashboard</strong> | <a href="/logout" class="logout-link">Exit</a></p>
+        <button class="btn btn-admin" onclick="updateResults()">Update Results</button>
+        <button class="btn btn-admin" onclick="grantBallots()">Reset Everyone to 100 Ballots</button>
+        {% if final_stage %}
+            <button class="btn btn-admin" disabled>Final Stage Active</button>
+            <p style="margin-top: 10px; font-size: 14px; color: #c1c1c8;">
+                Placement order: {{ placement_order|join(', ') }}
+            </p>
+        {% else %}
+            <button class="btn btn-admin" onclick="startFinalStage()">Start Final Stage</button>
+        {% endif %}
+        <div style="margin-top: 16px; display:flex; flex-wrap:wrap; justify-content:center; gap:10px;">
+            {% for username, score in cluster_scores.items() %}
+                <div style="background:#29292e; border:1px solid #323238; border-radius:12px; padding:12px 14px; min-width:120px; text-align:center;">
+                    <div style="font-size:12px; color:#8d8d99; text-transform:capitalize;">{{ username }}</div>
+                    <div style="font-size:18px; font-weight:700; margin-top:4px;">{{ score }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="grid-container">
+        <div class="hex-grid">
+            {% set row_lengths = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8] %}
+
+            {% for r in range(1, 16) %}
+            <div class="hex-row">
+                {% set count = row_lengths[r-1] %}
+                {% for c in range(1, count + 1) %}
+                    {% set cell_id = "R" ~ r ~ "C" ~ c %}
+
+                    {% set votes_list = all_votes_data.get(cell_id, []) %}
+                    {% set total_votes = votes_list|sum(attribute='ballots') %}
+                    {% set cluster_color = cluster_cell_color.get(cell_id) if cluster_cell_color is defined else None %}
+
+                    {% set pie_gradient = "" %}
+                    {% if total_votes > 0 %}
+                        {% set ns = namespace(current_pct=0, gradient_str="conic-gradient(") %}
+                        {% for item in votes_list %}
+                            {% set item_pct = (item['ballots'] / total_votes) * 100 %}
+                            {% set next_pct = ns.current_pct + item_pct %}
+                            {% set ns.gradient_str = ns.gradient_str ~ item['color'] ~ " " ~ ns.current_pct ~ "% " ~ next_pct ~ "%" %}
+                            {% if not loop.last %}{% set ns.gradient_str = ns.gradient_str ~ ", " %}{% endif %}
+                            {% set ns.current_pct = next_pct %}
+                        {% endfor %}
+                        {% set pie_gradient = ns.gradient_str ~ ")" %}
+                    {% endif %}
+
+                    <div class="hex {% if total_votes > 0 %}user-voted{% endif %} {% if cluster_color %}cluster-member{% endif %}"
+                         id="{{ cell_id }}"
+                         data-cell="{{ cell_id }}"
+                         style="{% if cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}{% if cluster_color in ['#fff', '#ffffff'] %} color: #111;{% endif %}">
+
+                        <div class="hex-content">
+                            <span class="total" id="total-{{ cell_id }}">
+                                {{ total_votes }}
+                            </span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        function updateResults() {
+            fetch('/api/admin/update_results', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => { if (data.success) location.reload(); else alert('Unable to update admin results.'); })
+            .catch(err => { console.error('Update results failed', err); alert('Update failed'); });
+        }
+
+        function grantBallots() {
+            fetch('/api/admin/grant_ballots', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => { if(data.success) alert("All users' remaining ballots have been reset back to 100!"); });
+        }
+
+        function startFinalStage() {
+            fetch('/api/admin/start_final_stage', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Unable to start final stage.');
+                }
+            });
+        }
+    </script>
+{% endblock %}

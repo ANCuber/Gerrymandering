@@ -2,12 +2,24 @@ from flask import Blueprint, render_template, request, session, redirect, url_fo
 from config import USER_REGISTRY, ADMIN_PASSWORD, TOTAL_ALLOWANCE
 from db import (
     get_admin_snapshot,
+    save_admin_snapshot,
     get_db,
     get_user_remaining_ballots,
     is_reveal_mode,
-    save_admin_snapshot,
+    is_final_stage_active,
+    get_placement_order,
+    get_current_placement_user,
+    get_cluster_placements,
+    get_used_shape_ids,
+    get_user_used_shape_ids,
+    get_cluster_scores,
+    start_final_stage,
+    advance_placement_turn,
+    save_cluster_placement,
+    add_cluster_score,
     fetch_ballot_votes,
 )
+from placement_order import order_users_by_variance, placement_cells, SHAPE_CATALOG
 
 main_bp = Blueprint('main', __name__)
 
@@ -15,49 +27,70 @@ main_bp = Blueprint('main', __name__)
 @main_bp.route('/')
 def index():
     if 'username' not in session:
-        return render_template('index.html', logged_in=False, error=None)
+        return render_template('login.html', logged_in=False, error=None)
 
     username = session['username']
     reveal = is_reveal_mode()
+    final_stage = is_final_stage_active()
     all_votes_data = {}
+    cluster_placements = get_cluster_placements()
+    cluster_scores = get_cluster_scores()
+    cluster_cell_owner = {}
+    cluster_cell_shape = {}
+    cluster_cell_color = {}
+    for placement in cluster_placements:
+        for cell in placement['cells']:
+            cluster_cell_owner[cell] = placement['username']
+            cluster_cell_shape[cell] = placement['shape_id']
+            cluster_cell_color[cell] = '#ffffff'
 
     if username == 'admin':
         all_votes_data = get_admin_snapshot()
+        placement_order = get_placement_order()
         return render_template(
-            'index.html',
+            'admin.html',
             logged_in=True,
             username='admin',
             user_color='#29292e',
             reveal_mode=reveal,
+            final_stage=final_stage,
             all_votes_data=all_votes_data,
+            placement_order=placement_order,
+            cluster_placements=cluster_placements,
+            cluster_scores=cluster_scores,
+            cluster_cell_color=cluster_cell_color,
+            shape_catalog=SHAPE_CATALOG,
         )
-
-    if reveal:
-        rows = fetch_ballot_votes()
-        for row in rows:
-            c_id = row['cell_id']
-            if c_id not in all_votes_data:
-                all_votes_data[c_id] = []
-            all_votes_data[c_id].append({
-                'username': row['username'],
-                'ballots': row['ballots_spent'],
-                'color': USER_REGISTRY.get(row['username'], {}).get('color', '#fff'),
-            })
 
     remaining = get_user_remaining_ballots(username)
     with get_db() as conn:
         user_rows = conn.execute('SELECT cell_id, ballots_spent FROM grid_votes WHERE username = ?', (username,)).fetchall()
         user_votes = {row['cell_id']: row['ballots_spent'] for row in user_rows}
 
+    current_turn = None
+    used_shapes = []
+    if final_stage:
+        current_turn = get_current_placement_user()
+        used_shapes = get_user_used_shape_ids(username)
+
     return render_template(
-        'index.html',
+        'user.html',
         logged_in=True,
         username=username,
         remaining=remaining,
         user_votes=user_votes,
         user_color=USER_REGISTRY[username]['color'],
         reveal_mode=reveal,
+        final_stage=final_stage,
+        current_turn=current_turn,
+        used_shapes=used_shapes,
+        cluster_placements=cluster_placements,
+        cluster_scores=cluster_scores,
+        cluster_cell_owner=cluster_cell_owner,
+        cluster_cell_shape=cluster_cell_shape,
+        cluster_cell_color=cluster_cell_color,
         all_votes_data=all_votes_data,
+        shape_catalog=SHAPE_CATALOG,
     )
 
 
@@ -74,7 +107,7 @@ def login():
         session['username'] = username
         return redirect(url_for('main.index'))
 
-    return render_template('index.html', logged_in=False, error='Invalid Username or Secret Keyword.')
+    return render_template('login.html', logged_in=False, error='Invalid Username or Secret Keyword.')
 
 
 @main_bp.route('/logout')
@@ -142,6 +175,81 @@ def admin_update_results():
 
     save_admin_snapshot(snapshot)
     return jsonify({'success': True})
+
+
+@main_bp.route('/api/admin/start_final_stage', methods=['POST'])
+def admin_start_final_stage():
+    if session.get('username') != 'admin':
+        return jsonify({'success': False}), 403
+
+    ballot_rows = fetch_ballot_votes()
+    ballots_by_user = {username: {} for username in USER_REGISTRY}
+    for row in ballot_rows:
+        ballots_by_user.setdefault(row['username'], {})[row['cell_id']] = row['ballots_spent']
+
+    placement_order = order_users_by_variance(ballots_by_user)
+    start_final_stage(placement_order)
+    return jsonify({'success': True, 'placement_order': placement_order})
+
+
+@main_bp.route('/api/place_cluster', methods=['POST'])
+def api_place_cluster():
+    if 'username' not in session or session['username'] == 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+    if not is_final_stage_active():
+        return jsonify({'success': False, 'error': 'Final stage is not active'}), 400
+
+    username = session['username']
+    current_user = get_current_placement_user()
+    if username != current_user:
+        return jsonify({'success': False, 'error': 'Not your turn'}), 400
+
+    data = request.json or {}
+    shape_id = data.get('shape_id')
+    anchor = data.get('anchor')
+    orientation = int(data.get('orientation', 0))
+
+    used_shapes = get_user_used_shape_ids(username)
+    if shape_id in used_shapes:
+        return jsonify({'success': False, 'error': 'Shape already used'}), 400
+
+    cells = placement_cells(shape_id, anchor, orientation)
+    if len(cells) != 5:
+        return jsonify({'success': False, 'error': 'Invalid placement'}), 400
+
+    existing = get_cluster_placements()
+    occupied = {cell for placement in existing for cell in placement['cells']}
+    if any(cell in occupied for cell in cells):
+        return jsonify({'success': False, 'error': 'Placement overlaps existing cluster'}), 400
+
+    with get_db() as conn:
+        placeholders = ','.join('?' for _ in cells)
+        rows = conn.execute(f'SELECT username, SUM(ballots_spent) AS ballots FROM grid_votes WHERE cell_id IN ({placeholders}) GROUP BY username', tuple(cells)).fetchall()
+        ballots_per_user = {row['username']: row['ballots'] for row in rows}
+        total_ballots = sum(ballots_per_user.values())
+
+    if ballots_per_user:
+        max_ballots = max(ballots_per_user.values())
+        winners = [user for user, ballots in ballots_per_user.items() if ballots == max_ballots]
+    else:
+        winners = []
+        max_ballots = 0
+
+    winner = winners[0] if len(winners) == 1 and max_ballots > 0 else None
+    if winner:
+        add_cluster_score(winner, total_ballots)
+
+    save_cluster_placement(username, shape_id, anchor, orientation, cells, winner, total_ballots if winner else 0)
+    next_user = advance_placement_turn()
+
+    return jsonify({
+        'success': True,
+        'next_user': next_user,
+        'winner': winner,
+        'cluster_cells': cells,
+        'total_ballots': total_ballots,
+    })
 
 
 @main_bp.route('/api/admin/grant_ballots', methods=['POST'])
