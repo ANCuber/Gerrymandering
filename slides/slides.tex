@@ -1,0 +1,181 @@
+\input{coconut-theme.tex}
+
+\title{椰島字謎遊戲}
+\subtitle{說明簡報}
+
+\begin{document}
+
+% ---------- 封面 ----------
+{\setbeamertemplate{footline}{}
+\begin{frame}[plain]
+  \centering
+  \vspace{0.5cm}
+  {\Huge\bfseries\textcolor{deepsea}{椰島字謎遊戲}}\\[0.2cm]
+  {\LARGE\textcolor{ocean}{說明簡報}}\\[0.5cm]
+  \begin{tikzpicture}
+    \fill[ocean!25] (-5,-0.6) rectangle (5,0.1);
+    \fill[sand] (0,0.05) ellipse (1.7 and 0.45);
+    \begin{scope}[shift={(0,0.05)}]\upsidedowntree\end{scope}
+  \end{tikzpicture}\\[0.3cm]
+  {\large\textcolor{coconut}{2026 資訊營 ・ 算法大地 ・ 關卡一}}
+\end{frame}}
+
+% ---------- 劇情 ----------
+\begin{frame}{劇情}
+  \vspace{0.8em}
+  \begin{oceanbox}
+    \large
+    兩支探險隊登上了椰島，島上的\textbf{椰子字謎}擋住了去路。
+    誰先破解字謎，誰就能先航向下一座島──
+    而且別忘了，你還能偷偷\textbf{搖一搖對手的椰子樹}，扯他們後腿！
+  \end{oceanbox}
+  \vspace{1em}
+  \begin{center}
+  \begin{tikzpicture}[scale=1.1]
+    \fill[sun!70] (-3.4,1.6) circle (0.35);
+    \fill[ocean!25] (-4.2,-0.7) rectangle (4.2,-0.1);
+    % 椰子島
+    \fill[sand] (2.4,-0.15) ellipse (1.5 and 0.4);
+    \begin{scope}[shift={(2.4,-0.05)}]\upsidedowntree\end{scope}
+    % 獨木舟
+    \draw[line width=3pt, coconut] (-2.6,-0.45) .. controls (-1.8,0.05) and (-1.0,0.05) .. (-0.2,-0.45) -- cycle;
+    \fill[coconut!80] (-2.5,-0.45) .. controls (-1.8,-0.05) and (-1.0,-0.05) .. (-0.3,-0.45) -- cycle;
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+% ---------- Wordle 介紹 ----------
+\begin{frame}{大家應該知道 Wordle 吧}
+  \vspace{0.4em}
+  \begin{center}
+  \begin{tikzpicture}[node distance=2pt]
+    \foreach \c/\l [count=\i from 0] in {wgray/W,wgreen/O,wyellow/R,wgray/D,wgreen/S}{
+      \node[fill=\c,text=white,minimum size=1cm,font=\bfseries\LARGE,rounded corners=2pt] at (\i*1.1,0){\l};}
+    \foreach \c/\l [count=\i from 0] in {wgreen/L,wgreen/E,wgray/M,wyellow/O,wgray/N}{
+      \node[fill=\c,text=white,minimum size=1cm,font=\bfseries\LARGE,rounded corners=2pt] at (\i*1.1,-1.15){\l};}
+  \end{tikzpicture}
+  \end{center}
+  \vspace{0.6em}
+  \begin{center}\large
+  經典的猜字遊戲：用一個個五字母單字，逼近藏起來的答案。
+  \end{center}
+\end{frame}
+
+% ---------- Wordle 規則 ----------
+\begin{frame}{Wordle 規則}
+  \begin{itemize}
+    \item 每次都問一個\textbf{合法（在字典裡）}的英文單字。
+    \item 遊戲會用三種顏色標示每個字母：
+      \begin{itemize}
+        \item \tile{wgreen}{} \textbf{熟椰（綠）}：在答案中，\textbf{而且位置對了}。
+        \item \tile{wyellow}{} \textbf{青椰（黃）}：在答案中，\textbf{但位置錯了}。
+        \item \tile{wgray}{} \textbf{空殼（灰）}：根本\textbf{不在答案裡}。
+      \end{itemize}
+    \item 用\textbf{越少次}詢問答對越好。
+  \end{itemize}
+\end{frame}
+
+% ---------- 搗蛋猴的字謎規則 ----------
+\begin{frame}{「壞掉的」椰島字謎}
+  \begin{itemize}
+    \item 這是一場 Wordle，但回饋\textbf{會壞掉}。
+    \item 你猜的字會被塗上\textbf{真實顏色}──但\textbf{對手隊伍}有機會
+      \textbf{搖你的椰子樹}，把其中\textbf{一格換成別的顏色}。
+    \item 整場遊戲，每隊只有\textbf{一次}搖樹改色的機會。
+  \end{itemize}
+  \vspace{0.6em}
+  \begin{sunbox}[title=一句話]
+    這就是「壞掉的 Wordle」── 你看到的顏色，可能有\textbf{一格是假的}。
+  \end{sunbox}
+\end{frame}
+
+% ---------- 分組 ----------
+\begin{frame}{分組與場地}
+  \begin{itemize}
+    \item \textbf{兩支隊伍同場較勁、平行進行}，各自猜各自的謎底，比誰先猜中。
+    \item 分成\textbf{兩間教室}，每支隊伍在兩間教室各派人手：
+    \item 總共分成\textbf{四組}，每一小組各有\textbf{六個人}。
+  \end{itemize}
+  \vspace{0.5em}
+  \begin{columns}
+  \column{0.5\textwidth}
+  \begin{oceanbox}[title=猜題教室]
+    \centering \small 兩隊各派人來\\ \textbf{猜自己隊伍的謎底}
+  \end{oceanbox}
+  \column{0.5\textwidth}
+  \begin{sunbox}[title=塗色教室]
+    \centering \small 兩隊各派人來\textbf{塗顏色}\\ 並決定要不要\textbf{動對手的顏色}
+  \end{sunbox}
+  \end{columns}
+\end{frame}
+
+% ---------- 回合流程 1 ----------
+\begin{frame}{回合流程（上）：兩隊平行開猜}
+  \begin{enumerate}
+    \item 關主生出\textbf{兩個謎底}（每隊一個），都是\textbf{五個字母}的英文單字。
+    \item \textbf{兩隊同時}進行：在\textbf{猜題教室}裡，各隊猜\textbf{自己隊伍}的字，
+      每次一個\textbf{合法英文單字}。
+    \item 猜的字送到\textbf{塗色教室}，由該隊塗上\textbf{真實顏色}，再傳回猜題教室。
+  \end{enumerate}
+  \vspace{0.5em}
+  \begin{center}
+  \begin{tikzpicture}[font=\small\bfseries]
+    \node[draw=ocean,rounded corners,fill=ocean!10,minimum height=1cm,minimum width=2.8cm] (l) at (0,0){猜題教室};
+    \node[draw=sun!85!black,rounded corners,fill=sun!15,minimum height=1cm,minimum width=2.8cm] (m) at (6.2,0){塗色教室};
+    \draw[-{Stealth},line width=1.4pt,ocean] (l) to[bend left=18] node[above]{猜的單字} (m);
+    \draw[-{Stealth},line width=1.4pt,leaf] (m) to[bend left=18] node[below]{回傳顏色} (l);
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+% ---------- 回合流程 2 ----------
+\begin{frame}{回合流程（下）：塗色與搗蛋}
+  \begin{enumerate}
+    \setcounter{enumi}{3}
+    \item 在塗色教室的隊伍，除了塗自己的顏色，還可以決定要不要把\textbf{對手}
+      某一回合的顏色\textbf{改掉一格}（整場\textbf{一次}機會）。
+    \item 哪一隊先把\textbf{正確答案}猜出來就\textbf{獲勝}──\textbf{用越少回合越好}。
+  \end{enumerate}
+  \vspace{0.8em}
+  \begin{center}
+  \begin{tikzpicture}
+    \node {\tile{wgreen}{S}};
+    \node at (1.1,0) {\tile{wyellow}{T}};
+    \node at (2.2,0) {\tile{wgray}{O}};
+    \node at (3.3,0) {\tile{wgray}{N}};
+    \node at (4.4,0) {\tile{wgreen}{E}};
+    \node[coral,font=\bfseries] at (2.2,-1.05) {對手搖樹，偷改了其中一格！};
+    \draw[-{Stealth},coral,line width=1.2pt] (2.2,-0.72) -- (2.2,-0.45);
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+% ---------- 精美圖示 ----------
+\begin{frame}{精美圖示}
+  \centering
+  \vspace{0.1em}
+  \includegraphics[width=0.82\textwidth]{flow.png}\\[0.2em]
+  {\footnotesize\textcolor{coconut!70!black}{
+  上半 = 塗色教室（塗色＋改對手一格）　下半 = 猜題教室（出題猜字）　兩隊（方塊／圓形）同時進行}}
+  \vspace{0.3em}
+  \begin{leafbox}
+    \small 你拿到的，是\textbf{可能含一格謊言}的回饋──要從中反推出正確答案。怎麼辦？見〈題解〉！
+  \end{leafbox}
+\end{frame}
+
+% ---------- 注意事項 ----------
+\begin{frame}{注意事項}
+  \begin{itemize}\small
+    \item \textbf{計時}：猜題教室每次 1 分鐘；塗色教室每次 1 分鐘 + 10 秒。
+    \item \textbf{次數}：作答最多 \textbf{8 次}，越少越好；\textbf{有一隊先答對就結束}。
+    \item \textbf{單字範圍}：因為不是考英文，謎底縮小到\textbf{ 700 多個}單字（約落在 4000 單內），
+      會提供\textbf{單字表}（\texttt{wordlist.pdf}，共 729 個）。
+    \item 但\textbf{猜題}所詢問的單字\textbf{不受此限}──只要 Wordle 允許就允許。
+  \end{itemize}
+  \vspace{0.8em}
+  \begin{center}
+  \large\textcolor{deepsea}{\textbf{請各位有創意地解決這個問題！}} \coconuticon
+  \end{center}
+\end{frame}
+
+\end{document}

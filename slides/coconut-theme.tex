@@ -1,0 +1,116 @@
+% ============================================================
+%  椰島 (Coconut Island) — 南島椰子主題 beamer theme
+%  共用前導檔，供「說明」與「題解」兩份簡報 \input
+%  以 XeLaTeX 編譯
+% ============================================================
+\documentclass[aspectratio=169,12pt]{beamer}
+
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage{tikz}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\usetikzlibrary{shapes.misc,arrows.meta}
+
+% ---- 字型 ----
+\setCJKmainfont{Microsoft JhengHei}
+\setCJKsansfont{Microsoft JhengHei}
+\setmonofont{JetBrainsMono Nerd Font Mono}
+\setsansfont{JetBrainsMono Nerd Font}
+
+% ---- 南島椰子色盤 ----
+\definecolor{ocean}{HTML}{0F8B8D}     % 海洋藍綠
+\definecolor{deepsea}{HTML}{0A5C5E}   % 深海
+\definecolor{sand}{HTML}{F4E4C1}      % 沙灘
+\definecolor{coconut}{HTML}{6B4226}   % 椰殼棕
+\definecolor{leaf}{HTML}{3A7D44}      % 椰葉綠
+\definecolor{sun}{HTML}{F2B705}       % 陽光黃
+\definecolor{coral}{HTML}{E07A5F}     % 珊瑚橘
+\definecolor{paperbg}{HTML}{FBF6EA}   % 米白底
+
+% ---- Wordle 椰子三色 ----
+\definecolor{wgreen}{HTML}{6AAA64}    % 熟椰：對的字母對的位置
+\definecolor{wyellow}{HTML}{C9B458}   % 青椰：字母有但位置錯
+\definecolor{wgray}{HTML}{787C7E}     % 空殼：沒這個字母
+
+% ---- beamer 外觀 ----
+\usetheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamercolor{background canvas}{bg=paperbg}
+\setbeamercolor{frametitle}{bg=ocean,fg=white}
+\setbeamercolor{title}{fg=deepsea}
+\setbeamercolor{structure}{fg=ocean}
+\setbeamercolor{normal text}{fg=coconut!90!black}
+\setbeamercolor{itemize item}{fg=leaf}
+\setbeamercolor{itemize subitem}{fg=ocean}
+\setbeamerfont{frametitle}{series=\bfseries}
+\setbeamertemplate{itemize item}{\textcolor{leaf}{\textbf{\textbullet}}}
+\setbeamertemplate{itemize subitem}{\textcolor{ocean}{--}}
+
+% 圓角的標題列
+\setbeamertemplate{frametitle}{%
+  \vspace{0.3em}%
+  \begin{beamercolorbox}[wd=\paperwidth,sep=0.45em,leftskip=0.6cm]{frametitle}%
+    \textbf{\strut\insertframetitle}%
+  \end{beamercolorbox}%
+}
+
+% ---- Wordle 方塊 ----
+% \tile{顏色}{字母}
+\newcommand{\tile}[2]{%
+  \tikz[baseline=-0.55ex]{\node[fill=#1,text=white,minimum size=0.92cm,
+    inner sep=0pt,font=\bfseries\Large,rounded corners=2pt]{#2};}}
+% 一整列五格
+\newcommand{\wordrow}[1]{\begin{tikzpicture}[baseline]#1\end{tikzpicture}}
+
+% ---- 小提示框 ----
+\newtcolorbox{leafbox}[1][]{%
+  enhanced, colback=leaf!8, colframe=leaf, boxrule=1pt, arc=4pt,
+  fonttitle=\bfseries, coltitle=white, colbacktitle=leaf, #1}
+\newtcolorbox{sunbox}[1][]{%
+  enhanced, colback=sun!12, colframe=sun!85!black, boxrule=1pt, arc=4pt,
+  fonttitle=\bfseries, coltitle=coconut, colbacktitle=sun, #1}
+\newtcolorbox{oceanbox}[1][]{%
+  enhanced, colback=ocean!8, colframe=ocean, boxrule=1pt, arc=4pt,
+  fonttitle=\bfseries, coltitle=white, colbacktitle=ocean, #1}
+
+% ---- 椰子小圖示 (tikz 畫的椰子) ----
+\newcommand{\coconuticon}[1][1]{%
+  \begin{tikzpicture}[scale=#1]
+    \fill[coconut] (0,0) circle (0.32);
+    \fill[coconut!70!black] (-0.1,0.08) circle (0.045);
+    \fill[coconut!70!black] (0.1,0.08) circle (0.045);
+    \fill[coconut!70!black] (0,-0.05) circle (0.045);
+  \end{tikzpicture}}
+
+% ---- 樹根朝天的椰子樹（本年度主題）----
+% 畫在原點 (0,0) 為地面，往上長；在 tikzpicture 裡用 scope 平移／縮放：
+%   \begin{scope}[shift={(x,y)},scale=s] \upsidedowntree \end{scope}
+\newcommand{\upsidedowntree}{%
+  % 樹幹：從地面往上
+  \draw[line width=3pt, coconut] (0,0)
+    .. controls (0.2,0.6) and (-0.05,1.1) .. (0.08,1.55);
+  % 樹根朝天：頂端往天空分岔
+  \foreach \a/\len in {118/0.5,98/0.62,80/0.6,62/0.48,140/0.4,58/0.34}{
+    \draw[line width=1.6pt, coconut!85!black]
+      (0.08,1.55) -- ++({\len*cos(\a)},{\len*sin(\a)});}
+  % 細根的小分岔
+  \foreach \a/\len in {100/0.18,82/0.18,120/0.14,60/0.14}{
+    \draw[line width=1pt, coconut!85!black]
+      ({0.08+0.5*cos(\a)},{1.55+0.5*sin(\a)}) -- ++({\len*cos(\a+25)},{\len*sin(\a+25)});}
+  % 椰葉朝下：從樹冠（下方）往外垂
+  \foreach \a in {205,232,258,282,308,335}{
+    \draw[line width=2pt, leaf] (0.08,0.55)
+      .. controls ({0.08+0.5*cos(\a)},{0.55+0.45*sin(\a)})
+         and ({0.08+1.0*cos(\a)},{0.25+0.3*sin(\a)})
+      .. ({0.08+1.3*cos(\a)},{0.08});}
+  % 椰子：掛在樹冠附近（下方）
+  \fill[coconut] (-0.12,0.5) circle (0.12);
+  \fill[coconut] (0.3,0.52) circle (0.12);
+}
+
+% 頁尾：小小的椰子島
+\setbeamertemplate{footline}{%
+  \hbox{}\hfill
+  \raisebox{2pt}{\textcolor{ocean!70}{\footnotesize 椰島 ・ Broken Wordle}}\hspace{0.4em}
+  \raisebox{1pt}{\textcolor{coconut}{\footnotesize\insertframenumber}}\hspace{0.5em}\vspace{2pt}}
