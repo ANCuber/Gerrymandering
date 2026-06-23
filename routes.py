@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
-from config import USER_REGISTRY, ADMIN_PASSWORD, TOTAL_ALLOWANCE
+from config import USER_REGISTRY, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_COLOR, TOTAL_ALLOWANCE
 from db import (
     get_admin_snapshot,
     save_admin_snapshot,
@@ -44,14 +44,14 @@ def index():
             cluster_cell_shape[cell] = placement['shape_id']
             cluster_cell_color[cell] = '#ffffff'
 
-    if username == 'admin':
+    if username == ADMIN_USERNAME:
         all_votes_data = get_admin_snapshot()
         placement_order = get_placement_order()
         return render_template(
             'admin.html',
             logged_in=True,
-            username='admin',
-            user_color='#29292e',
+            username=ADMIN_USERNAME,
+            user_color=ADMIN_COLOR,
             reveal_mode=reveal,
             final_stage=final_stage,
             all_votes_data=all_votes_data,
@@ -99,8 +99,8 @@ def login():
     username = request.form.get('username', '').strip().lower()
     secret = request.form.get('secret', '').strip()
 
-    if username == 'admin' and secret == ADMIN_PASSWORD:
-        session['username'] = 'admin'
+    if username == ADMIN_USERNAME and secret == ADMIN_PASSWORD:
+        session['username'] = ADMIN_USERNAME
         return redirect(url_for('main.index'))
 
     if username in USER_REGISTRY and USER_REGISTRY[username]['secret'] == secret:
@@ -118,7 +118,7 @@ def logout():
 
 @main_bp.route('/api/vote', methods=['POST'])
 def api_vote():
-    if 'username' not in session or session['username'] == 'admin':
+    if 'username' not in session or session['username'] == ADMIN_USERNAME:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
 
     username = session['username']
@@ -158,7 +158,7 @@ def api_vote():
 
 @main_bp.route('/api/admin/update_results', methods=['POST'])
 def admin_update_results():
-    if session.get('username') != 'admin':
+    if session.get('username') != ADMIN_USERNAME:
         return jsonify({'success': False}), 403
 
     snapshot = {}
@@ -179,7 +179,7 @@ def admin_update_results():
 
 @main_bp.route('/api/admin/start_final_stage', methods=['POST'])
 def admin_start_final_stage():
-    if session.get('username') != 'admin':
+    if session.get('username') != ADMIN_USERNAME:
         return jsonify({'success': False}), 403
 
     ballot_rows = fetch_ballot_votes()
@@ -194,7 +194,7 @@ def admin_start_final_stage():
 
 @main_bp.route('/api/place_cluster', methods=['POST'])
 def api_place_cluster():
-    if 'username' not in session or session['username'] == 'admin':
+    if 'username' not in session or session['username'] == ADMIN_USERNAME:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
 
     if not is_final_stage_active():
@@ -254,7 +254,7 @@ def api_place_cluster():
 
 @main_bp.route('/api/admin/grant_ballots', methods=['POST'])
 def admin_grant_ballots():
-    if session.get('username') != 'admin':
+    if session.get('username') != ADMIN_USERNAME:
         return jsonify({'success': False}), 403
 
     with get_db() as conn:
