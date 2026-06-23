@@ -9,6 +9,11 @@
 *.run
 *.xml
 
+# Self defined
+*.db
+
+### Python stuff
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
