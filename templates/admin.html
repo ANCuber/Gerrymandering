@@ -40,8 +40,9 @@
                     {% set total_votes = votes_list|sum(attribute='ballots') %}
                     {% set cluster_color = cluster_cell_color.get(cell_id) if cluster_cell_color is defined else None %}
 
+                    {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
                     {% set pie_gradient = "" %}
-                    {% if total_votes > 0 %}
+                    {% if total_votes > 0 and not cluster_owner %}
                         {% set ns = namespace(current_pct=0, gradient_str="conic-gradient(") %}
                         {% for item in votes_list %}
                             {% set item_pct = (item['ballots'] / total_votes) * 100 %}
@@ -53,10 +54,10 @@
                         {% set pie_gradient = ns.gradient_str ~ ")" %}
                     {% endif %}
 
-                    <div class="hex {% if total_votes > 0 %}user-voted{% endif %} {% if cluster_color %}cluster-member{% endif %}"
+                    <div class="hex {% if total_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %}"
                          id="{{ cell_id }}"
                          data-cell="{{ cell_id }}"
-                         style="{% if cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}{% if cluster_color in ['#fff', '#ffffff'] %} color: #111;{% endif %}">
+                         style="{% if pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}">
 
                         <div class="hex-content">
                             <span class="total" id="total-{{ cell_id }}">

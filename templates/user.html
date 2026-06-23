@@ -8,9 +8,9 @@
         <p>Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="/logout" class="logout-link">Exit</a></p>
         {% if final_stage %}
             {% if current_turn == username %}
-                <p style="font-size: 13px; color: #8d8d99; margin: 0;">🎯 Final stage active — it's your turn. Click one of the cluster tiles below to select it, then click a grid hex to choose an anchor. Double-click a shape to rotate it before placement.</p>
+                <p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>
             {% else %}
-                <p style="font-size: 13px; color: #8d8d99; margin: 0;">⏳ Final stage active. Waiting for <strong>{{ current_turn }}</strong> to place the next cluster.</p>
+                <p class="waiting-hint">⏳ Final stage active. Waiting for <strong>{{ current_turn }}</strong> to place the next cluster.</p>
             {% endif %}
             <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">
                 Your score: <strong>{{ cluster_scores.get(username, 0) }}</strong>
@@ -19,8 +19,7 @@
                 Scores: {% for username, score in cluster_scores.items() %}{{ username }}: {{ score }}{% if not loop.last %}, {% endif %}{% endfor %}
             </p>
             {% if current_turn == username %}
-                <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>, anchor: <strong id="selected-anchor">none</strong>.</p>
-                <button id="place-cluster-button" class="btn btn-admin" disabled style="margin-top: 8px;">Place Selected Cluster</button>
+                <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>
             {% endif %}
         {% else %}
             <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe your votes here.</p>
@@ -56,21 +55,15 @@
                     {% endif %}
 
                     {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
-                    {% set cluster_shape = cluster_cell_shape.get(cell_id) if cluster_cell_shape is defined else None %}
-                    {% set cluster_color = cluster_cell_color.get(cell_id) if cluster_cell_color is defined else None %}
-                    <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}occupied{% endif %} {% if cluster_color %}cluster-member{% endif %}"
+                    <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %}"
                          id="{{ cell_id }}"
                          data-cell="{{ cell_id }}"
-                         style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}{% if cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}{% if cluster_color in ['#fff', '#ffffff'] %} color: #111;{% endif %}">
+                         style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}">
 
                         <div class="hex-content">
                             <span class="total" id="total-{{ cell_id }}">
                                 {{ total_votes if show_results else '' }}
                             </span>
-
-                            {% if cluster_shape %}
-                                <span class="cluster-label">{{ cluster_shape }}</span>
-                            {% endif %}
 
                             <span class="user-spent" id="user-{{ cell_id }}"
                                   style="display:{% if my_votes > 0 %}inline{% else %}none{% endif %};">
@@ -410,17 +403,7 @@
 
         function initializeFinalStage() {
             renderClusterPalette();
-            placeButton = document.getElementById('place-cluster-button');
-            if (placeButton) {
-                placeButton.addEventListener('click', () => {
-                    if (!selectedShape || !selectedAnchor) {
-                        alert('Select a cluster and an anchor cell before placing.');
-                        return;
-                    }
-                    placeCluster(selectedShape.shapeId, selectedAnchor, selectedOrientation);
-                });
-                updatePlaceButtonState();
-            }
+            // No explicit place button in the new UX; selecting a cluster and clicking a grid hex places it.
             if (isUserTurn) {
                 initializePlacementActions();
             }
