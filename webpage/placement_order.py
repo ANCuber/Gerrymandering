@@ -1,6 +1,6 @@
 import json
 
-HEX_DIRECTIONS = [(1, 0), (0, 1), (-1, -1), (-1, 0), (0, -1), (1, -1)]
+HEX_DIRECTIONS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 ROW_LENGTHS = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8]
 
 
@@ -66,6 +66,51 @@ def rotate_shape(coords, orientation):
     return rotated
 
 
+def compute_bounding_box_area(shape):
+    xs = [x for x, _ in shape]
+    ys = [y for _, y in shape]
+    return (max(xs) - min(xs) + 1) * (max(ys) - min(ys) + 1)
+
+
+def is_symmetric_shape(shape):
+    normalized = canonical_shape(shape)
+
+    # rotation symmetry
+    rotated = set(shape)
+    for _ in range(1, 6):
+        rotated = {rotate_left(c) for c in rotated}
+        if canonical_shape(rotated) == normalized:
+            return True
+
+    # reflection symmetry
+    reflected = {reflect(c) for c in shape}
+    if canonical_shape(reflected) == normalized:
+        return True
+    rotated = set(reflected)
+    for _ in range(1, 6):
+        rotated = {rotate_left(c) for c in rotated}
+        if canonical_shape(rotated) == normalized:
+            return True
+
+    return False
+
+
+def is_connected_shape(shape):
+    cells = set(shape)
+    if not cells:
+        return False
+
+    visited = {next(iter(cells))}
+    frontier = [next(iter(cells))]
+    while frontier:
+        cell = frontier.pop()
+        for neighbor in [(cell[0] + dx, cell[1] + dy) for dx, dy in HEX_DIRECTIONS]:
+            if neighbor in cells and neighbor not in visited:
+                visited.add(neighbor)
+                frontier.append(neighbor)
+    return len(visited) == len(cells)
+
+
 def get_board_cells():
     cells = []
     for r, length in enumerate(ROW_LENGTHS, start=1):
@@ -90,9 +135,11 @@ def cell_id_to_axial(cell_id):
 
 
 def generate_shape_catalog():
-    # Use a larger number of connected pentahex cluster cases.
     free_shapes = generate_free_pentahexes()
-    selected_shapes = free_shapes[:12]
+    connected_shapes = [shape for shape in free_shapes if is_connected_shape(shape)]
+    symmetric_shapes = [shape for shape in connected_shapes if is_symmetric_shape(shape)]
+    symmetric_shapes.sort(key=lambda shape: (compute_bounding_box_area(shape), tuple(shape)))
+    selected_shapes = symmetric_shapes[:12]
     catalog = []
     for index, shape in enumerate(selected_shapes, start=1):
         shape_id = f'P{index}'
