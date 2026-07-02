@@ -189,6 +189,21 @@ def admin_start_final_stage():
 
     placement_order = order_users_by_variance(ballots_by_user)
     start_final_stage(placement_order)
+
+    # Refresh admin snapshot to reflect collapsed ballots in the final phase.
+    snapshot = {}
+    rows = fetch_ballot_votes()
+    for row in rows:
+        c_id = row['cell_id']
+        if c_id not in snapshot:
+            snapshot[c_id] = []
+        snapshot[c_id].append({
+            'username': row['username'],
+            'ballots': row['ballots_spent'],
+            'color': USER_REGISTRY.get(row['username'], {}).get('color', '#fff'),
+        })
+    save_admin_snapshot(snapshot)
+
     return jsonify({'success': True, 'placement_order': placement_order})
 
 
