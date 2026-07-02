@@ -13,10 +13,17 @@
 \usetikzlibrary{shapes.misc,arrows.meta}
 
 % ---- 字型 ----
-\setCJKmainfont{Microsoft JhengHei}
-\setCJKsansfont{Microsoft JhengHei}
-\setmonofont{JetBrainsMono Nerd Font Mono}
-\setsansfont{JetBrainsMono Nerd Font}
+\XeTeXlinebreaklocale "zh"
+\XeTeXlinebreakskip = 0pt plus 1pt
+
+\setmainfont{Noto Sans TC}
+\setmonofont{Courier New}
+
+\setCJKmainfont[
+    BoldFont = Noto Sans TC ExtraBold
+]{Noto Sans TC}
+\setCJKsansfont{Noto Sans TC}
+\setCJKmonofont{Noto Sans Mono CJK TC}
 
 % ---- 南島椰子色盤 ----
 \definecolor{ocean}{HTML}{0F8B8D}     % 海洋藍綠
@@ -112,5 +119,5 @@
 % 頁尾：小小的椰子島
 \setbeamertemplate{footline}{%
   \hbox{}\hfill
-  \raisebox{2pt}{\textcolor{ocean!70}{\footnotesize 椰島 ・ Broken Wordle}}\hspace{0.4em}
+  \raisebox{2pt}{\textcolor{ocean!70}{\footnotesize Gerrymandering}}\hspace{0.4em}
   \raisebox{1pt}{\textcolor{coconut}{\footnotesize\insertframenumber}}\hspace{0.5em}\vspace{2pt}}
