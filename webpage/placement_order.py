@@ -1,7 +1,34 @@
 import json
 
+from config import GRID_MAP
+
 HEX_DIRECTIONS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 ROW_LENGTHS = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8]
+BORDER_ASYMMETRIC_ROW_LENGTHS = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8]
+BLOCKED_CELLS = {
+    'standard': set(),
+    'border_asymmetric': {
+        'R2C3', 'R3C7', 'R4C2', 'R5C10', 'R6C5',
+        'R8C12', 'R9C4', 'R10C8', 'R11C6', 'R12C13',
+        'R13C9', 'R14C2', 'R15C7'
+    },
+}
+
+
+def get_row_lengths(mode=None):
+    mode_name = (mode or GRID_MAP or 'standard').lower()
+    if mode_name == 'border_asymmetric':
+        return BORDER_ASYMMETRIC_ROW_LENGTHS
+    return ROW_LENGTHS
+
+
+def get_blocked_cells(mode=None):
+    mode_name = (mode or GRID_MAP or 'standard').lower()
+    return set(BLOCKED_CELLS.get(mode_name, set()))
+
+
+def is_cell_blocked(cell_id, mode=None):
+    return cell_id in get_blocked_cells(mode)
 
 
 def rotate_left(coord):
@@ -113,11 +140,11 @@ def is_connected_shape(shape):
 
 def get_board_cells():
     cells = []
-    for r, length in enumerate(ROW_LENGTHS, start=1):
+    row_lengths = get_row_lengths()
+    for r, length in enumerate(row_lengths, start=1):
         y = r - 8
-        x_min = max(-7, 1 - r)
         for c in range(1, length + 1):
-            x = x_min + c - 1
+            x = c - (length + 1) / 2
             cells.append((r, c, x, y))
     return cells
 
@@ -169,8 +196,9 @@ def placement_cells(shape_id, anchor_cell_id, orientation=0):
 
 
 def compute_allocation_variance(user_votes):
+    row_lengths = get_row_lengths()
     cell_ids = [cell_id for _, _, cell_id in sorted(
-        [(r, c, f'R{r}C{c}') for r, length in enumerate(ROW_LENGTHS, start=1) for c in range(1, length + 1)],
+        [(r, c, f'R{r}C{c}') for r, length in enumerate(row_lengths, start=1) for c in range(1, length + 1)],
         key=lambda t: (t[0], t[1])
     )]
     counts = [user_votes.get(cell_id, 0) for cell_id in cell_ids]

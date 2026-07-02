@@ -2,6 +2,11 @@ DATABASE = 'voting_game.db'
 
 TOTAL_ALLOWANCE = 100
 
+# Choose the board layout:
+# - 'standard' for the original symmetric hex board
+# - 'border_asymmetric' for a mild border-only variation
+GRID_MAP = 'border_asymmetric'
+
 ADMIN_USERNAME = 'admin'
 ADMIN_PASSWORD = 'admin'
 ADMIN_COLOR = '#29292e'

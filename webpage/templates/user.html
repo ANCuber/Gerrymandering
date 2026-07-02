@@ -28,9 +28,7 @@
 
     <div class="grid-container">
         <div class="hex-grid">
-            {% set row_lengths = [8, 9, 10, 11, 12, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8] %}
-
-            {% for r in range(1, 16) %}
+            {% for r in range(1, row_lengths|length + 1) %}
             <div class="hex-row">
                 {% set count = row_lengths[r-1] %}
                 {% for c in range(1, count + 1) %}
@@ -55,7 +53,7 @@
                     {% endif %}
 
                     {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
-                    <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %}"
+                    <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %} {% if cell_id in blocked_cells %}blocked{% endif %}"
                          id="{{ cell_id }}"
                          data-cell="{{ cell_id }}"
                          style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}">
@@ -106,6 +104,7 @@
 
         function initializeVoteActions() {
             document.querySelectorAll('.hex').forEach(hexElement => {
+                if (hexElement.classList.contains('blocked')) return;
                 let pressTimer; let isLongPress = false; let touchMoved = false;
 
                 const startPress = (e) => {
@@ -339,6 +338,7 @@
 
         function initializePlacementActions() {
             document.querySelectorAll('.hex').forEach(hexElement => {
+                if (hexElement.classList.contains('blocked')) return;
                 hexElement.addEventListener('dragenter', e => {
                     if (!currentDragData) return;
                     e.preventDefault();
@@ -364,7 +364,7 @@
                 });
 
                 hexElement.addEventListener('click', () => {
-                    if (!isUserTurn || !selectedShape) return;
+                    if (!isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
                     clearAnchorSelection();
                     selectedAnchor = hexElement.dataset.cell;
                     hexElement.classList.add('selected-anchor');

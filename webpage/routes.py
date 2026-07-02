@@ -19,7 +19,7 @@ from db import (
     add_cluster_score,
     fetch_ballot_votes,
 )
-from placement_order import order_users_by_variance, placement_cells, SHAPE_CATALOG
+from placement_order import order_users_by_variance, placement_cells, SHAPE_CATALOG, get_row_lengths, get_blocked_cells, is_cell_blocked
 
 main_bp = Blueprint('main', __name__)
 
@@ -60,6 +60,8 @@ def index():
             cluster_scores=cluster_scores,
             cluster_cell_color=cluster_cell_color,
             shape_catalog=SHAPE_CATALOG,
+            row_lengths=get_row_lengths(),
+            blocked_cells=get_blocked_cells(),
         )
 
     remaining = get_user_remaining_ballots(username)
@@ -91,6 +93,8 @@ def index():
         cluster_cell_color=cluster_cell_color,
         all_votes_data=all_votes_data,
         shape_catalog=SHAPE_CATALOG,
+        row_lengths=get_row_lengths(),
+        blocked_cells=get_blocked_cells(),
     )
 
 
@@ -125,6 +129,9 @@ def api_vote():
     data = request.json
     cell_id = data.get('cell_id')
     action = data.get('action')
+
+    if is_cell_blocked(cell_id):
+        return jsonify({'success': False, 'error': 'This cell is unavailable'}), 400
 
     remaining = get_user_remaining_ballots(username)
 
@@ -232,6 +239,9 @@ def api_place_cluster():
     cells = placement_cells(shape_id, anchor, orientation)
     if len(cells) != 5:
         return jsonify({'success': False, 'error': 'Invalid placement'}), 400
+
+    if any(is_cell_blocked(cell) for cell in cells):
+        return jsonify({'success': False, 'error': 'Placement overlaps an unavailable cell'}), 400
 
     existing = get_cluster_placements()
     occupied = {cell for placement in existing for cell in placement['cells']}
