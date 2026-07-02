@@ -143,8 +143,9 @@ def get_board_cells():
     row_lengths = get_row_lengths()
     for r, length in enumerate(row_lengths, start=1):
         y = r - 8
+        x_min = max(-7, 1 - r)
         for c in range(1, length + 1):
-            x = c - (length + 1) / 2
+            x = x_min + c - 1
             cells.append((r, c, x, y))
     return cells
 

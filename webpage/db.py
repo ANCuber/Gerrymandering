@@ -202,6 +202,16 @@ def advance_placement_turn():
     return order[next_index]
 
 
+def skip_current_placement_turn():
+    order = get_placement_order()
+    if not order:
+        return None
+    index = get_placement_index()
+    next_index = (index + 1) % len(order)
+    set_config_value('placement_index', str(next_index))
+    return order[next_index]
+
+
 def cancel_final_stage():
     with get_db() as conn:
         conn.execute('DELETE FROM cluster_placements')

@@ -18,6 +18,7 @@ from db import (
     save_cluster_placement,
     add_cluster_score,
     fetch_ballot_votes,
+    skip_current_placement_turn,
 )
 from placement_order import order_users_by_variance, placement_cells, SHAPE_CATALOG, get_row_lengths, get_blocked_cells, is_cell_blocked
 
