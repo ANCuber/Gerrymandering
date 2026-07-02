@@ -8,9 +8,14 @@
 *.out
 *.run
 *.xml
+*.snm
+*.nav
+*.toc
 
 # Self defined
 *.db
+.DS_Store
+.DS_Store/
 
 ### Python stuff
 
