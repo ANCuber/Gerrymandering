@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
-from config import USER_REGISTRY, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_COLOR, TOTAL_ALLOWANCE
+from config import USER_REGISTRY, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_COLOR, TOTAL_ALLOWANCE, get_active_user_registry
 from db import (
     get_admin_snapshot,
     save_admin_snapshot,
@@ -108,7 +108,8 @@ def login():
         session['username'] = ADMIN_USERNAME
         return redirect(url_for('main.index'))
 
-    if username in USER_REGISTRY and USER_REGISTRY[username]['secret'] == secret:
+    active = get_active_user_registry()
+    if username in active and active[username]['secret'] == secret:
         session['username'] = username
         return redirect(url_for('main.index'))
 
@@ -284,7 +285,8 @@ def admin_grant_ballots():
         return jsonify({'success': False}), 403
 
     with get_db() as conn:
-        for user in USER_REGISTRY:
+        active = get_active_user_registry()
+        for user in active:
             row = conn.execute('SELECT SUM(ballots_spent) as total_spent FROM grid_votes WHERE username = ?', (user,)).fetchone()
             spent = row['total_spent'] if row and row['total_spent'] else 0
             conn.execute('UPDATE user_allowances SET total_allowance = ? WHERE username = ?', (TOTAL_ALLOWANCE + spent, user))

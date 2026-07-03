@@ -23,3 +23,18 @@ USER_REGISTRY = {
     "group9": {"secret": "group9", "color": "#e67e22"},
     "group10": {"secret": "group10", "color": "#6c5ce7"}
 }
+
+# How many groups (from the start of USER_REGISTRY) are attending the game.
+# Set this to an integer to limit attendees. Default is all groups.
+GROUP_COUNT = 10
+
+
+def get_active_user_registry():
+    """Return a dict of the first GROUP_COUNT entries from USER_REGISTRY."""
+    try:
+        n = int(GROUP_COUNT)
+    except Exception:
+        n = len(USER_REGISTRY)
+    keys = list(USER_REGISTRY.keys())
+    n = max(0, min(n, len(keys)))
+    return {k: USER_REGISTRY[k] for k in keys[:n]}

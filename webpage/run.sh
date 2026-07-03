@@ -2,4 +2,4 @@
 
 rm voting_game.db
 
-python app.py -p 18303
+python app.py -p 18303 -g 10

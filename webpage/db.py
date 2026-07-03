@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from config import DATABASE, USER_REGISTRY, TOTAL_ALLOWANCE
+from config import DATABASE, TOTAL_ALLOWANCE, get_active_user_registry
 
 
 def get_db():
@@ -83,7 +83,8 @@ def init_db():
         conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('reveal_mode', 'false')")
         conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('final_stage', 'false')")
 
-        for user in USER_REGISTRY:
+        active = get_active_user_registry()
+        for user in active:
             conn.execute(
                 "INSERT OR IGNORE INTO user_allowances (username, total_allowance) VALUES (?, ?)",
                 (user, TOTAL_ALLOWANCE)
@@ -184,7 +185,8 @@ def start_final_stage(order_list):
     with get_db() as conn:
         conn.execute('DELETE FROM cluster_placements')
         conn.execute('UPDATE cluster_scores SET score = 0')
-        for user in USER_REGISTRY:
+        active = get_active_user_registry()
+        for user in active:
             conn.execute('INSERT OR IGNORE INTO cluster_scores (username, score) VALUES (?, ?)', (user, 0))
         conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('final_stage', 'true'))
         conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_order', json.dumps(order_list)))
