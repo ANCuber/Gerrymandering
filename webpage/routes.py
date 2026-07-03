@@ -25,6 +25,7 @@ from placement_order import order_users_by_variance, placement_cells, SHAPE_CATA
 main_bp = Blueprint('main', __name__)
 
 
+@main_bp.route('')
 @main_bp.route('/')
 def index():
     if 'username' not in session:

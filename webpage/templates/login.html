@@ -7,7 +7,7 @@
     <div class="box">
         <h3>Enter Secure Game Space</h3>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
-        <form action="/login" method="POST">
+        <form action="{{ url_for('main.login') }}" method="POST">
             <input type="text" name="username" placeholder="Username" required autocomplete="off"><br>
             <input type="password" name="secret" placeholder="Secret Keyword" required><br><br>
             <button type="submit" class="btn">Verify identity</button>

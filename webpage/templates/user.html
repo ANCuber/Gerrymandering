@@ -5,7 +5,7 @@
 {% block content %}
     <h1>⬡ Coconut Voting Room ⬡</h1>
     <div class="box">
-        <p>Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="/logout" class="logout-link">Exit</a></p>
+        <p>Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="{{ url_for('main.logout') }}" class="logout-link">Exit</a></p>
         {% if final_stage %}
             {% if current_turn == username %}
                 <p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>
@@ -197,7 +197,7 @@
             if (!shapeId || !anchor) {
                 return alert('Cluster and anchor are required to place a cluster.');
             }
-            fetch('/api/place_cluster', {
+            fetch('{{ url_for('main.api_place_cluster') }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ shape_id: shapeId, anchor: anchor, orientation: orientation })
@@ -416,7 +416,7 @@
         }
 
         function handleVoteAction(cellId, actionType) {
-            fetch('/api/vote', {
+            fetch('{{ url_for('main.api_vote') }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cell_id: cellId, action: actionType })

@@ -6,7 +6,7 @@ import config
 
 app = Flask(__name__)
 app.secret_key = 'hex_grid_secret_key'
-app.register_blueprint(main_bp)
+app.register_blueprint(main_bp, url_prefix='/gerrymandering')
 
 
 def _parse_args_and_run():
