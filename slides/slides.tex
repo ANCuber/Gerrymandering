@@ -3,6 +3,9 @@
 \title{傑利蠑螈}
 \subtitle{說明簡報}
 
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+
 \begin{document}
 
 % title
@@ -47,7 +50,13 @@
   \vspace{0.4em}
   % \large
   分配支持者、劃定選區，最終獲取最多的支持者！
-  （圖待補）
+  \begin{figure}[hc]
+    \centering
+    \includegraphics[width=0.32\textwidth]{blank}
+    \includegraphics[width=0.32\textwidth]{distri}
+    \includegraphics[width=0.32\textwidth]{placement}
+    \label{fig:three-images}
+  \end{figure}
 \end{frame}
 
 % page 
@@ -55,6 +64,10 @@
   \vspace{0.4em}
   \large
   \textbf{島嶼}最初為一個由六角塊組合而成的地圖，一個六角塊則相當於島上的一塊\textbf{棲地}。
+\vspace{0.4em}
+
+\centering
+\includegraphics[width=0.32\textwidth]{blank}
 \end{frame}
 
 % page 
@@ -62,6 +75,10 @@
   \vspace{0.4em}
     \large
     \text{猴子}是島上的居民，居住於棲地內。此外，每隻猴子都會有各自支持的小隊。
+\vspace{0.4em}
+
+\centering
+\includegraphics[width=0.32\textwidth]{ballots}
 \end{frame}
 
 % page 
@@ -69,6 +86,10 @@
   \vspace{0.4em}
   \large
   某個階段後（後續將詳述），同一棲地內的猴子會轉而支持原先在該棲地內獲得多數支持的小隊，即在棲地內贏者全拿。
+\vspace{0.4em}
+
+    \centering
+    \includegraphics[width=0.32\textwidth]{distri}
 \end{frame}
 
 % page 
@@ -76,6 +97,10 @@
   \vspace{0.4em}
   \large
   最終多個相連的棲地可能被統一計算，在其中佔猴子支持度絕對多數的小隊可以獲得相等於這些棲地內猴子總數的票數。
+  \vspace{0.4em}
+
+    \centering
+    \includegraphics[width=0.32\textwidth]{placement}
 \end{frame}
 
 % page 
@@ -134,6 +159,13 @@
   \begin{itemize}
     \item 不確定，但要嘛照分數分配要嘛照名次
   \end{itemize}
+\end{frame}
+
+% page 
+\begin{frame}{LINK}
+  \vspace{0.4em}
+  \centering
+  
 \end{frame}
 
 \end{document}
