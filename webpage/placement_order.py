@@ -10,7 +10,10 @@ BLOCKED_CELLS = {
     'border_asymmetric': {
         'R2C3', 'R3C7', 'R4C2', 'R5C10', 'R6C5',
         'R8C12', 'R9C4', 'R10C8', 'R11C6', 'R12C13',
-        'R13C9', 'R14C2', 'R15C7'
+        'R13C9', 'R14C2', 'R15C7',
+        'R1C6', 'R2C8', 'R3C2', 'R4C9', 'R5C4',
+        'R7C14', 'R8C3', 'R9C12', 'R11C10', 'R12C2',
+        'R14C8'
     },
 }
 
