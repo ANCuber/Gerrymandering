@@ -2,19 +2,31 @@
 
 {% block title %}Coconut Voting Room — Admin{% endblock %}
 
+{% block head_extra %}
+<style>
+    .hex.cluster-member .hex-content {
+        color: rgba(255, 255, 255, 0.38);
+        text-shadow: none;
+    }
+
+    .hex.cluster-member .total {
+        opacity: 0.45;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
     <h1>⬡ Coconut Voting Room — Admin ⬡</h1>
     <div class="box">
         <p>⚡ <strong>Admin Dashboard</strong> | <a href="{{ url_for('main.logout') }}" class="logout-link">Exit</a></p>
-        <button class="btn btn-admin" onclick="updateResults()">Update Results</button>
-        <button class="btn btn-admin" onclick="grantBallots()">Reset Everyone to 100 Ballots</button>
+        <button class="btn btn-admin" onclick="updateResults()">Next Round</button>
         {% if final_stage %}
             <button class="btn btn-admin" disabled>Final Stage Active</button>
             <p style="margin-top: 10px; font-size: 14px; color: #c1c1c8;">
                 Placement order: {{ placement_order|join(', ') }}
             </p>
         {% else %}
-            <button class="btn btn-admin" onclick="startFinalStage()">Start Final Stage</button>
+            <button class="btn btn-admin" onclick="startFinalStage()">!!! Final Stage !!!</button>
         {% endif %}
         <div style="margin-top: 16px; display:flex; flex-wrap:wrap; justify-content:center; gap:10px;">
             {% for username, score in cluster_scores.items() %}
@@ -36,6 +48,8 @@
 
                     {% set votes_list = all_votes_data.get(cell_id, []) %}
                     {% set total_votes = votes_list|sum(attribute='ballots') %}
+                    {% set vote_font_size = 12 + (total_votes // 25) %}
+                    {% if vote_font_size > 19 %}{% set vote_font_size = 19 %}{% endif %}
                     {% set cluster_color = cluster_cell_color.get(cell_id) if cluster_cell_color is defined else None %}
 
                     {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
@@ -55,10 +69,10 @@
                     <div class="hex {% if total_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %} {% if cell_id in blocked_cells %}blocked{% endif %}"
                          id="{{ cell_id }}"
                          data-cell="{{ cell_id }}"
-                         style="{% if pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}">
+                        style="{% if cluster_owner and cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}">
 
                         <div class="hex-content">
-                            <span class="total" id="total-{{ cell_id }}">
+                            <span class="total" id="total-{{ cell_id }}" style="font-size: {{ vote_font_size }}px; line-height: 1;">
                                 {{ total_votes }}
                             </span>
                         </div>
@@ -77,12 +91,6 @@
             .then(res => res.json())
             .then(data => { if (data.success) location.reload(); else alert('Unable to update admin results.'); })
             .catch(err => { console.error('Update results failed', err); alert('Update failed'); });
-        }
-
-        function grantBallots() {
-            fetch('{{ url_for('main.admin_grant_ballots') }}', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => { if(data.success) alert("All users' remaining ballots have been reset back to 100!"); });
         }
 
         function startFinalStage() {

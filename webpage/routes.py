@@ -1,10 +1,11 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
-from config import USER_REGISTRY, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_COLOR, TOTAL_ALLOWANCE, get_active_user_registry
+from config import USER_REGISTRY, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_COLOR, TOTAL_ALLOWANCE, MAX_BALLOTS_PER_CELL_PER_USER, get_active_user_registry
 from db import (
     get_admin_snapshot,
     save_admin_snapshot,
     get_db,
     get_user_remaining_ballots,
+    get_locked_ballots,
     is_reveal_mode,
     is_final_stage_active,
     get_placement_order,
@@ -18,6 +19,7 @@ from db import (
     save_cluster_placement,
     add_cluster_score,
     fetch_ballot_votes,
+    snapshot_locked_votes,
     skip_current_placement_turn,
 )
 from placement_order import order_users_by_variance, placement_cells, SHAPE_CATALOG, get_row_lengths, get_blocked_cells, is_cell_blocked
@@ -44,7 +46,10 @@ def index():
         for cell in placement['cells']:
             cluster_cell_owner[cell] = placement['username']
             cluster_cell_shape[cell] = placement['shape_id']
-            cluster_cell_color[cell] = '#ffffff'
+            if placement.get('winner'):
+                cluster_cell_color[cell] = USER_REGISTRY.get(placement['winner'], {}).get('color', '#ffffff')
+            else:
+                cluster_cell_color[cell] = '#ffffff'
 
     if username == ADMIN_USERNAME:
         all_votes_data = get_admin_snapshot()
@@ -60,6 +65,7 @@ def index():
             placement_order=placement_order,
             cluster_placements=cluster_placements,
             cluster_scores=cluster_scores,
+            cluster_cell_owner=cluster_cell_owner,
             cluster_cell_color=cluster_cell_color,
             shape_catalog=SHAPE_CATALOG,
             row_lengths=get_row_lengths(),
@@ -143,6 +149,17 @@ def api_vote():
             if remaining <= 0:
                 return jsonify({'success': False, 'error': 'No ballots left!'}), 400
 
+            current_row = conn.execute(
+                'SELECT ballots_spent FROM grid_votes WHERE username = ? AND cell_id = ?',
+                (username, cell_id),
+            ).fetchone()
+            current_ballots = current_row['ballots_spent'] if current_row else 0
+            if current_ballots >= MAX_BALLOTS_PER_CELL_PER_USER:
+                return jsonify({
+                    'success': False,
+                    'error': f'You can place at most {MAX_BALLOTS_PER_CELL_PER_USER} ballots on a single grid.',
+                }), 400
+
             conn.execute(
                 '''
                 INSERT INTO grid_votes (username, cell_id, ballots_spent)
@@ -152,7 +169,21 @@ def api_vote():
                 (username, cell_id),
             )
         elif action == 'clear':
-            conn.execute('DELETE FROM grid_votes WHERE username = ? AND cell_id = ?', (username, cell_id))
+            locked_ballots = get_locked_ballots(username, cell_id)
+            current_row = conn.execute(
+                'SELECT ballots_spent FROM grid_votes WHERE username = ? AND cell_id = ?',
+                (username, cell_id),
+            ).fetchone()
+            current_ballots = current_row['ballots_spent'] if current_row else 0
+
+            if locked_ballots > 0:
+                if current_ballots > locked_ballots:
+                    conn.execute(
+                        'UPDATE grid_votes SET ballots_spent = ? WHERE username = ? AND cell_id = ?',
+                        (locked_ballots, username, cell_id),
+                    )
+            else:
+                conn.execute('DELETE FROM grid_votes WHERE username = ? AND cell_id = ?', (username, cell_id))
 
         conn.commit()
         u_row = conn.execute('SELECT ballots_spent FROM grid_votes WHERE username = ? AND cell_id = ?', (username, cell_id)).fetchone()
@@ -171,6 +202,16 @@ def admin_update_results():
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'success': False}), 403
 
+    snapshot_locked_votes()
+
+    with get_db() as conn:
+        active = get_active_user_registry()
+        for user in active:
+            row = conn.execute('SELECT SUM(ballots_spent) as total_spent FROM grid_votes WHERE username = ?', (user,)).fetchone()
+            spent = row['total_spent'] if row and row['total_spent'] else 0
+            conn.execute('UPDATE user_allowances SET total_allowance = ? WHERE username = ?', (TOTAL_ALLOWANCE + spent, user))
+        conn.commit()
+
     snapshot = {}
     rows = fetch_ballot_votes()
     for row in rows:
@@ -184,7 +225,7 @@ def admin_update_results():
         })
 
     save_admin_snapshot(snapshot)
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'message': 'Results updated and ballots reset.'})
 
 
 @main_bp.route('/api/admin/start_final_stage', methods=['POST'])

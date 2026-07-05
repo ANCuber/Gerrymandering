@@ -40,6 +40,14 @@ def init_db():
             )
         ''')
         conn.execute('''
+            CREATE TABLE IF NOT EXISTS locked_votes (
+                username TEXT,
+                cell_id TEXT,
+                locked_ballots INTEGER DEFAULT 0,
+                PRIMARY KEY (username, cell_id)
+            )
+        ''')
+        conn.execute('''
             CREATE TABLE IF NOT EXISTS cluster_placements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT,
@@ -295,3 +303,24 @@ def save_admin_snapshot(snapshot):
 def fetch_ballot_votes():
     with get_db() as conn:
         return conn.execute('SELECT cell_id, username, ballots_spent FROM grid_votes WHERE ballots_spent > 0').fetchall()
+
+
+def snapshot_locked_votes():
+    with get_db() as conn:
+        conn.execute('DELETE FROM locked_votes')
+        rows = conn.execute('SELECT username, cell_id, ballots_spent FROM grid_votes WHERE ballots_spent > 0').fetchall()
+        for row in rows:
+            conn.execute(
+                'INSERT INTO locked_votes (username, cell_id, locked_ballots) VALUES (?, ?, ?)',
+                (row['username'], row['cell_id'], row['ballots_spent']),
+            )
+        conn.commit()
+
+
+def get_locked_ballots(username, cell_id):
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT locked_ballots FROM locked_votes WHERE username = ? AND cell_id = ?',
+            (username, cell_id),
+        ).fetchone()
+        return row['locked_ballots'] if row else 0
