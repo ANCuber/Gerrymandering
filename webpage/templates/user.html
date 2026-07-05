@@ -5,25 +5,27 @@
 {% block content %}
     <h1>⬡ Coconut Voting Room ⬡</h1>
     <div class="box">
-        <p>Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="{{ url_for('main.logout') }}" class="logout-link">Exit</a></p>
-        {% if final_stage %}
-            {% if current_turn == username %}
-                <p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>
+        <p id="user-summary-line">Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="{{ url_for('main.logout') }}" class="logout-link">Exit</a></p>
+        <div id="user-status-section">
+            {% if final_stage %}
+                {% if current_turn == username %}
+                    <p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>
+                {% else %}
+                    <p class="waiting-hint">⏳ Final stage active. Waiting for <strong>{{ current_turn }}</strong> to place the next cluster.</p>
+                {% endif %}
+                <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">
+                    Your score: <strong>{{ cluster_scores.get(username, 0) }}</strong>
+                </p>
+                <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">
+                    Scores: {% for score_user, score in cluster_scores.items() %}{{ score_user }}: {{ score }}{% if not loop.last %}, {% endif %}{% endfor %}
+                </p>
+                {% if current_turn == username %}
+                    <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>
+                {% endif %}
             {% else %}
-                <p class="waiting-hint">⏳ Final stage active. Waiting for <strong>{{ current_turn }}</strong> to place the next cluster.</p>
+                <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p>
             {% endif %}
-            <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">
-                Your score: <strong>{{ cluster_scores.get(username, 0) }}</strong>
-            </p>
-            <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">
-                Scores: {% for username, score in cluster_scores.items() %}{{ username }}: {{ score }}{% if not loop.last %}, {% endif %}{% endfor %}
-            </p>
-            {% if current_turn == username %}
-                <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>
-            {% endif %}
-        {% else %}
-            <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p>
-        {% endif %}
+        </div>
     </div>
 
     <div class="grid-container">
@@ -33,30 +35,18 @@
                 {% set count = row_lengths[r-1] %}
                 {% for c in range(1, count + 1) %}
                     {% set cell_id = "R" ~ r ~ "C" ~ c %}
-
-                    {% set votes_list = all_votes_data.get(cell_id, []) %}
-                    {% set total_votes = votes_list|sum(attribute='ballots') %}
-                    {% set my_votes = user_votes.get(cell_id, 0) if user_votes is defined else 0 %}
-                    {% set show_results = username == 'admin' or reveal_mode %}
-
-                    {% set pie_gradient = "" %}
-                    {% if show_results and total_votes > 0 %}
-                        {% set ns = namespace(current_pct=0, gradient_str="conic-gradient(") %}
-                        {% for item in votes_list %}
-                            {% set item_pct = (item['ballots'] / total_votes) * 100 %}
-                            {% set next_pct = ns.current_pct + item_pct %}
-                            {% set ns.gradient_str = ns.gradient_str ~ item['color'] ~ " " ~ ns.current_pct ~ "% " ~ next_pct ~ "%" %}
-                            {% if not loop.last %}{% set ns.gradient_str = ns.gradient_str ~ ", " %}{% endif %}
-                            {% set ns.current_pct = next_pct %}
-                        {% endfor %}
-                        {% set pie_gradient = ns.gradient_str ~ ")" %}
-                    {% endif %}
-
-                    {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
+                    {% set cell_state = cells.get(cell_id, {}) %}
+                    {% set votes_list = cell_state.get('votes_list', []) %}
+                    {% set total_votes = cell_state.get('total_votes', 0) %}
+                    {% set my_votes = cell_state.get('my_votes', 0) %}
+                    {% set show_results = cell_state.get('show_results', false) %}
+                    {% set cluster_owner = cell_state.get('cluster_owner') %}
+                    {% set cluster_color = cell_state.get('cluster_color') %}
+                    {% set pie_gradient = cell_state.get('pie_gradient', '') %}
                     <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %} {% if cell_id in blocked_cells %}blocked{% endif %}"
                          id="{{ cell_id }}"
                          data-cell="{{ cell_id }}"
-                         style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}">
+                        style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}{% if cluster_owner %}background: #ffffff;{% elif show_results and pie_gradient %}background: {{ pie_gradient }};{% endif %}">
 
                         <div class="hex-content">
                             <span class="total" id="total-{{ cell_id }}">
@@ -74,7 +64,8 @@
             {% endfor %}
         </div>
     </div>
-    {% if final_stage %}
+
+    <div id="cluster-palette-wrapper" style="display: {% if final_stage %}block{% else %}none{% endif %};">
         <div class="cluster-palette" id="cluster-palette">
             {% for shape in shape_catalog %}
                 <div class="cluster-card {% if shape.id in used_shapes %}used{% endif %}"
@@ -88,52 +79,40 @@
                 </div>
             {% endfor %}
         </div>
-    {% endif %}
+    </div>
 {% endblock %}
 
 {% block scripts %}
     <script>
-        const currentUser = "{{ username }}";
-        const isRevealActive = {{ 'true' if reveal_mode else 'false' }};
-        const finalStageActive = {{ 'true' if final_stage else 'false' }};
-        const isUserTurn = {{ 'true' if current_turn == username else 'false' }};
+        const currentUser = {{ username|tojson }};
+        const apiStateUrl = {{ url_for('main.api_state')|tojson }};
+        const apiEventsUrl = {{ url_for('main.api_events')|tojson }};
+        const voteApiUrl = {{ url_for('main.api_vote')|tojson }};
+        const placeClusterUrl = {{ url_for('main.api_place_cluster')|tojson }};
+        const dashboardState = {
+            currentUser,
+            isAdmin: false,
+            revealMode: {{ reveal_mode|tojson }},
+            finalStage: {{ final_stage|tojson }},
+            isUserTurn: {{ (current_turn == username)|tojson }},
+            remaining: {{ remaining|tojson }},
+            currentTurn: {{ current_turn|tojson }},
+            clusterScores: {{ cluster_scores|tojson }},
+            usedShapes: new Set({{ used_shapes|tojson }}),
+            rowLengths: {{ row_lengths|tojson }},
+            blockedCells: new Set({{ blocked_cells|tojson }}),
+            shapeCatalog: {{ shape_catalog|tojson }},
+            cells: {{ cells|tojson }},
+        };
+
         let selectedAnchor = null;
         let selectedShape = null;
         let selectedOrientation = 0;
-        let placeButton = null;
-
-        function initializeVoteActions() {
-            document.querySelectorAll('.hex').forEach(hexElement => {
-                if (hexElement.classList.contains('blocked')) return;
-                let pressTimer; let isLongPress = false; let touchMoved = false;
-
-                const startPress = (e) => {
-                    if (e.type === 'mousedown' && 'ontouchstart' in window) return;
-                    isLongPress = false; touchMoved = false;
-                    pressTimer = setTimeout(() => {
-                        isLongPress = true;
-                        handleVoteAction(hexElement.dataset.cell, 'clear');
-                    }, 800);
-                };
-
-                const endPress = (e) => {
-                    if (e.type === 'mouseup' && 'ontouchend' in window) return;
-                    clearTimeout(pressTimer);
-                    if (touchMoved) return;
-                    if (!isLongPress) handleVoteAction(hexElement.dataset.cell, 'add');
-                };
-
-                const cancelPress = () => clearTimeout(pressTimer);
-
-                hexElement.addEventListener('mousedown', startPress);
-                hexElement.addEventListener('mouseup', endPress);
-                hexElement.addEventListener('mouseleave', cancelPress);
-                hexElement.addEventListener('touchstart', startPress, {passive: true});
-                hexElement.addEventListener('touchend', endPress, {passive: true});
-                hexElement.addEventListener('touchmove', () => { touchMoved = true; cancelPress(); }, {passive: true});
-                hexElement.addEventListener('touchcancel', cancelPress, {passive: true});
-            });
-        }
+        let currentDragData = null;
+        let highlightedCells = [];
+        let dashboardEventSource = null;
+        let refreshInFlight = false;
+        let refreshRequested = false;
 
         function rotateLeft(coord) {
             return [coord[0] + coord[1], -coord[0]];
@@ -193,29 +172,6 @@
             container.appendChild(svg);
         }
 
-        function placeCluster(shapeId, anchor, orientation) {
-            if (!shapeId || !anchor) {
-                return alert('Cluster and anchor are required to place a cluster.');
-            }
-            fetch('{{ url_for('main.api_place_cluster') }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ shape_id: shapeId, anchor: anchor, orientation: orientation })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert(data.error || 'Could not place cluster.');
-                }
-            })
-            .catch(err => {
-                console.error('Place cluster failed', err);
-                alert('Cluster placement failed.');
-            });
-        }
-
         function cellIdToAxial(cellId) {
             const match = /R(\d+)C(\d+)/.exec(cellId);
             if (!match) return null;
@@ -244,9 +200,6 @@
             return rotated.map(([dx, dy]) => axialToCellId(anchor.x + dx, anchor.y + dy)).filter(Boolean);
         }
 
-        let currentDragData = null;
-        let highlightedCells = [];
-
         function clearDragPreview() {
             highlightedCells.forEach(cellId => {
                 const cellEl = document.getElementById(cellId);
@@ -260,7 +213,6 @@
             selectedAnchor = null;
             const selectedAnchorLabel = document.getElementById('selected-anchor');
             if (selectedAnchorLabel) selectedAnchorLabel.textContent = 'none';
-            if (placeButton) placeButton.disabled = true;
         }
 
         function updatePlaceButtonState() {
@@ -269,21 +221,41 @@
         }
 
         function renderClusterPalette() {
+            const paletteWrapper = document.getElementById('cluster-palette-wrapper');
             const palette = document.getElementById('cluster-palette');
-            if (!palette) return;
-            // tiny transparent image used to hide the browser drag ghost
+            if (!paletteWrapper || !palette) return;
+
+            paletteWrapper.style.display = dashboardState.finalStage ? 'block' : 'none';
+
             const transparentImg = new Image();
             transparentImg.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+
             palette.querySelectorAll('.cluster-card').forEach(card => {
                 const coords = JSON.parse(card.dataset.coords);
                 const preview = card.querySelector('.cluster-preview');
                 const orientationLabel = card.querySelector('.cluster-orientation');
                 let orientation = parseInt(card.dataset.orientation, 10) || 0;
-                renderShapePreview(preview, coords, orientation);
+                const shapeId = card.dataset.shapeId;
+                const isUsed = dashboardState.usedShapes.has(shapeId);
 
-                // allow selecting a cluster tile for click placement
+                renderShapePreview(preview, coords, orientation);
+                card.classList.toggle('used', isUsed);
+                card.draggable = dashboardState.finalStage && !isUsed;
+                const nameEl = card.querySelector('.cluster-name');
+                if (nameEl) {
+                    nameEl.textContent = isUsed ? `${shapeId} (used)` : shapeId;
+                }
+                if (orientationLabel) {
+                    orientationLabel.textContent = `Rotation: ${orientation}`;
+                }
+
+                if (card.dataset.bound === 'true') {
+                    return;
+                }
+                card.dataset.bound = 'true';
+
                 card.addEventListener('click', () => {
-                    if (card.classList.contains('used')) return;
+                    if (!dashboardState.finalStage || card.classList.contains('used')) return;
                     document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
                     card.classList.add('selected');
                     selectedShape = { shapeId: card.dataset.shapeId, orientation, coords };
@@ -296,7 +268,6 @@
                     updatePlaceButtonState();
                 });
 
-                // always allow inspecting rotation even when not draggable
                 card.addEventListener('dblclick', () => {
                     orientation = (orientation + 1) % 6;
                     card.dataset.orientation = orientation;
@@ -306,23 +277,21 @@
                         const selectedRotationLabel = document.getElementById('selected-rotation');
                         if (selectedRotationLabel) selectedRotationLabel.textContent = orientation;
                     }
-                    orientationLabel.innerText = `Rotation: ${orientation}`;
+                    if (orientationLabel) orientationLabel.innerText = `Rotation: ${orientation}`;
                     renderShapePreview(preview, coords, orientation);
                 });
 
-                if (!card.classList.contains('used')) {
+                if (!isUsed) {
                     card.addEventListener('dragstart', event => {
                         currentDragData = { shapeId: card.dataset.shapeId, orientation, coords };
                         try {
                             const payload = JSON.stringify({ shapeId: card.dataset.shapeId, orientation });
-                            // set both MIME types for broader browser support
                             event.dataTransfer.setData('application/json', payload);
                             event.dataTransfer.setData('text/plain', payload);
                             event.dataTransfer.effectAllowed = 'copy';
-                            // hide default rectangular drag image so only hex highlights show
                             event.dataTransfer.setDragImage(transparentImg, 0, 0);
                         } catch (e) {
-                            // ignore if environment restricts dataTransfer operations
+                            // ignore if the environment restricts dataTransfer operations
                         }
                         card.classList.add('dragging');
                     });
@@ -336,16 +305,58 @@
             });
         }
 
+        function initializeVoteActions() {
+            document.querySelectorAll('.hex').forEach(hexElement => {
+                if (hexElement.dataset.voteBound === 'true' || hexElement.classList.contains('blocked')) return;
+                hexElement.dataset.voteBound = 'true';
+
+                let pressTimer = null;
+                let isLongPress = false;
+                let touchMoved = false;
+
+                const startPress = (e) => {
+                    if (dashboardState.finalStage) return;
+                    if (e.type === 'mousedown' && 'ontouchstart' in window) return;
+                    isLongPress = false;
+                    touchMoved = false;
+                    pressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        handleVoteAction(hexElement.dataset.cell, 'clear');
+                    }, 800);
+                };
+
+                const endPress = (e) => {
+                    if (dashboardState.finalStage) return;
+                    if (e.type === 'mouseup' && 'ontouchend' in window) return;
+                    clearTimeout(pressTimer);
+                    if (touchMoved) return;
+                    if (!isLongPress) handleVoteAction(hexElement.dataset.cell, 'add');
+                };
+
+                const cancelPress = () => clearTimeout(pressTimer);
+
+                hexElement.addEventListener('mousedown', startPress);
+                hexElement.addEventListener('mouseup', endPress);
+                hexElement.addEventListener('mouseleave', cancelPress);
+                hexElement.addEventListener('touchstart', startPress, { passive: true });
+                hexElement.addEventListener('touchend', endPress, { passive: true });
+                hexElement.addEventListener('touchmove', () => { touchMoved = true; cancelPress(); }, { passive: true });
+                hexElement.addEventListener('touchcancel', cancelPress, { passive: true });
+            });
+        }
+
         function initializePlacementActions() {
             document.querySelectorAll('.hex').forEach(hexElement => {
-                if (hexElement.classList.contains('blocked')) return;
+                if (hexElement.dataset.placeBound === 'true' || hexElement.classList.contains('blocked')) return;
+                hexElement.dataset.placeBound = 'true';
+
                 hexElement.addEventListener('dragenter', e => {
-                    if (!currentDragData) return;
+                    if (!dashboardState.finalStage || !currentDragData) return;
                     e.preventDefault();
                 });
 
                 hexElement.addEventListener('dragover', e => {
-                    if (!currentDragData) return;
+                    if (!dashboardState.finalStage || !currentDragData) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
                     clearDragPreview();
@@ -364,7 +375,7 @@
                 });
 
                 hexElement.addEventListener('click', () => {
-                    if (!isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
+                    if (!dashboardState.finalStage || !dashboardState.isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
                     clearAnchorSelection();
                     selectedAnchor = hexElement.dataset.cell;
                     hexElement.classList.add('selected-anchor');
@@ -374,13 +385,14 @@
                 });
 
                 hexElement.addEventListener('drop', e => {
+                    if (!dashboardState.finalStage || !dashboardState.isUserTurn) return;
                     e.preventDefault();
                     clearDragPreview();
                     let payload = null;
                     if (currentDragData) {
                         payload = currentDragData;
                     } else {
-                                const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+                        const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
                         if (raw) {
                             try {
                                 payload = JSON.parse(raw);
@@ -401,22 +413,147 @@
             });
         }
 
-        function initializeFinalStage() {
+        function renderUserStatusSection(state) {
+            const statusSection = document.getElementById('user-status-section');
+            if (!statusSection) return;
+
+            if (state.finalStage) {
+                const scoreEntries = Object.entries(state.clusterScores || {}).sort(([left], [right]) => left.localeCompare(right));
+                const scoreSummary = scoreEntries.map(([user, score]) => `${user}: ${score}`).join(', ');
+                const turnMessage = state.isUserTurn
+                    ? '<p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>'
+                    : `<p class="waiting-hint">⏳ Final stage active. Waiting for <strong>${state.currentTurn || 'the next player'}</strong> to place the next cluster.</p>`;
+                const selectedInfo = state.isUserTurn
+                    ? '<p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>'
+                    : '';
+
+                statusSection.innerHTML = `
+                    ${turnMessage}
+                    <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">Your score: <strong>${(state.clusterScores || {})[state.currentUser] || 0}</strong></p>
+                    <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">Scores: ${scoreSummary}</p>
+                    ${selectedInfo}
+                `;
+                return;
+            }
+
+            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p>';
+        }
+
+        function updateCells(state) {
+            Object.entries(state.cells || {}).forEach(([cellId, cellData]) => {
+                const cellEl = document.getElementById(cellId);
+                const totalEl = document.getElementById(`total-${cellId}`);
+                const userEl = document.getElementById(`user-${cellId}`);
+                if (!cellEl || !totalEl || !userEl) return;
+
+                cellEl.classList.toggle('blocked', !!cellData.blocked);
+                cellEl.classList.toggle('cluster-member', !!cellData.cluster_owner);
+                cellEl.classList.toggle('user-voted', cellData.my_votes > 0);
+                totalEl.textContent = cellData.show_results ? String(cellData.total_votes) : '';
+                userEl.textContent = cellData.my_votes > 0 ? `+${cellData.my_votes}` : '';
+                userEl.style.display = cellData.my_votes > 0 ? 'inline' : 'none';
+
+                if (cellData.cluster_owner) {
+                    cellEl.style.background = '#ffffff';
+                } else if (cellData.show_results && cellData.pie_gradient) {
+                    cellEl.style.background = cellData.pie_gradient;
+                } else {
+                    cellEl.style.background = '';
+                }
+            });
+        }
+
+        function applyDashboardState(state) {
+            dashboardState.revealMode = !!state.reveal_mode;
+            dashboardState.finalStage = !!state.final_stage;
+            dashboardState.isUserTurn = !!state.is_user_turn;
+            dashboardState.remaining = state.remaining;
+            dashboardState.currentTurn = state.current_turn;
+            dashboardState.clusterScores = state.cluster_scores || {};
+            dashboardState.usedShapes = new Set(state.used_shapes || []);
+            dashboardState.cells = state.cells || {};
+
+            const ballotCounter = document.getElementById('ballot-counter');
+            if (ballotCounter && state.remaining != null) {
+                ballotCounter.textContent = state.remaining;
+            }
+
+            renderUserStatusSection(dashboardState);
             renderClusterPalette();
-            // No explicit place button in the new UX; selecting a cluster and clicking a grid hex places it.
-            if (isUserTurn) {
-                initializePlacementActions();
+            updateCells(dashboardState);
+
+            if (!dashboardState.isUserTurn) {
+                selectedShape = null;
+                selectedAnchor = null;
+                clearAnchorSelection();
+                document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
             }
         }
 
-        if (finalStageActive) {
-            initializeFinalStage();
-        } else {
-            initializeVoteActions();
+        async function refreshDashboardState() {
+            if (refreshInFlight) {
+                refreshRequested = true;
+                return;
+            }
+
+            refreshInFlight = true;
+            try {
+                const response = await fetch(apiStateUrl, { credentials: 'same-origin' });
+                const data = await response.json();
+                if (data.success && data.state) {
+                    applyDashboardState(data.state);
+                }
+            } catch (error) {
+                console.error('Dashboard refresh failed', error);
+            } finally {
+                refreshInFlight = false;
+                if (refreshRequested) {
+                    refreshRequested = false;
+                    refreshDashboardState();
+                }
+            }
+        }
+
+        function connectDashboardStream() {
+            if (!window.EventSource) return;
+            dashboardEventSource = new EventSource(apiEventsUrl);
+            dashboardEventSource.addEventListener('ready', refreshDashboardState);
+            dashboardEventSource.addEventListener('dashboard_update', refreshDashboardState);
+            dashboardEventSource.onerror = () => {
+                // EventSource will retry automatically; the next successful event will refresh state.
+            };
+        }
+
+        function placeCluster(shapeId, anchor, orientation) {
+            if (!shapeId || !anchor) {
+                alert('Cluster and anchor are required to place a cluster.');
+                return;
+            }
+            fetch(placeClusterUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shape_id: shapeId, anchor: anchor, orientation: orientation })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    selectedShape = null;
+                    selectedAnchor = null;
+                    clearAnchorSelection();
+                    document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
+                    refreshDashboardState();
+                } else {
+                    alert(data.error || 'Could not place cluster.');
+                }
+            })
+            .catch(err => {
+                console.error('Place cluster failed', err);
+                alert('Cluster placement failed.');
+            });
         }
 
         function handleVoteAction(cellId, actionType) {
-            fetch('{{ url_for('main.api_vote') }}', {
+            fetch(voteApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cell_id: cellId, action: actionType })
@@ -426,7 +563,11 @@
                 if (data.success) {
                     const userSpan = document.getElementById(`user-${cellId}`);
                     const hexDiv = document.getElementById(cellId);
+                    const total = document.getElementById(`total-${cellId}`);
 
+                    if (total && dashboardState.revealMode) {
+                        total.innerText = '';
+                    }
                     document.getElementById('ballot-counter').innerText = data.remaining;
                     if (data.cell_user > 0) {
                         userSpan.innerText = `+${data.cell_user}`;
@@ -437,14 +578,18 @@
                         hexDiv.classList.remove('user-voted');
                     }
 
-                    if (isRevealActive) {
-                        location.reload();
-                    }
+                    refreshDashboardState();
                 } else {
                     alert(data.error);
                 }
             })
-            .catch(err => console.error("Communication error:", err));
+            .catch(err => console.error('Communication error:', err));
         }
+
+        renderClusterPalette();
+        initializeVoteActions();
+        initializePlacementActions();
+        applyDashboardState(dashboardState);
+        connectDashboardStream();
     </script>
 {% endblock %}

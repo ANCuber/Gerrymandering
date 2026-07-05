@@ -19,19 +19,20 @@
     <h1>⬡ Coconut Voting Room — Admin ⬡</h1>
     <div class="box">
         <p>⚡ <strong>Admin Dashboard</strong> | <a href="{{ url_for('main.logout') }}" class="logout-link">Exit</a></p>
-        <button class="btn btn-admin" onclick="updateResults()">Next Round</button>
-        {% if final_stage %}
-            <button class="btn btn-admin" disabled>Final Stage Active</button>
-            <p style="margin-top: 10px; font-size: 14px; color: #c1c1c8;">
-                Placement order: {{ placement_order|join(', ') }}
-            </p>
-        {% else %}
-            <button class="btn btn-admin" onclick="startFinalStage()">!!! Final Stage !!!</button>
-        {% endif %}
-        <div style="margin-top: 16px; display:flex; flex-wrap:wrap; justify-content:center; gap:10px;">
-            {% for username, score in cluster_scores.items() %}
+        <div id="admin-controls">
+            {% if final_stage %}
+                <button class="btn btn-admin" onclick="updateResults()">Next Round</button>
+                <button class="btn btn-admin" disabled>Final Stage Active</button>
+                <p id="placement-order-line" style="margin-top: 10px; font-size: 14px; color: #c1c1c8;">Placement order: {{ placement_order|join(', ') }}</p>
+            {% else %}
+                <button class="btn btn-admin" onclick="updateResults()">Next Round</button>
+                <button class="btn btn-admin" onclick="startFinalStage()">!!! Final Stage !!!</button>
+            {% endif %}
+        </div>
+        <div id="admin-score-cards" style="margin-top: 16px; display:flex; flex-wrap:wrap; justify-content:center; gap:10px;">
+            {% for score_user, score in cluster_scores.items() %}
                 <div style="background:#29292e; border:1px solid #323238; border-radius:12px; padding:12px 14px; min-width:120px; text-align:center;">
-                    <div style="font-size:12px; color:#8d8d99; text-transform:capitalize;">{{ username }}</div>
+                    <div style="font-size:12px; color:#8d8d99; text-transform:capitalize;">{{ score_user }}</div>
                     <div style="font-size:18px; font-weight:700; margin-top:4px;">{{ score }}</div>
                 </div>
             {% endfor %}
@@ -45,31 +46,19 @@
                 {% set count = row_lengths[r-1] %}
                 {% for c in range(1, count + 1) %}
                     {% set cell_id = "R" ~ r ~ "C" ~ c %}
-
-                    {% set votes_list = all_votes_data.get(cell_id, []) %}
-                    {% set total_votes = votes_list|sum(attribute='ballots') %}
+                    {% set cell_state = cells.get(cell_id, {}) %}
+                    {% set votes_list = cell_state.get('votes_list', []) %}
+                    {% set total_votes = cell_state.get('total_votes', 0) %}
                     {% set vote_font_size = 12 + (total_votes // 25) %}
                     {% if vote_font_size > 19 %}{% set vote_font_size = 19 %}{% endif %}
-                    {% set cluster_color = cluster_cell_color.get(cell_id) if cluster_cell_color is defined else None %}
-
-                    {% set cluster_owner = cluster_cell_owner.get(cell_id) if cluster_cell_owner is defined else None %}
-                    {% set pie_gradient = "" %}
-                    {% if total_votes > 0 and not cluster_owner %}
-                        {% set ns = namespace(current_pct=0, gradient_str="conic-gradient(") %}
-                        {% for item in votes_list %}
-                            {% set item_pct = (item['ballots'] / total_votes) * 100 %}
-                            {% set next_pct = ns.current_pct + item_pct %}
-                            {% set ns.gradient_str = ns.gradient_str ~ item['color'] ~ " " ~ ns.current_pct ~ "% " ~ next_pct ~ "%" %}
-                            {% if not loop.last %}{% set ns.gradient_str = ns.gradient_str ~ ", " %}{% endif %}
-                            {% set ns.current_pct = next_pct %}
-                        {% endfor %}
-                        {% set pie_gradient = ns.gradient_str ~ ")" %}
-                    {% endif %}
+                    {% set cluster_color = cell_state.get('cluster_color') %}
+                    {% set cluster_owner = cell_state.get('cluster_owner') %}
+                    {% set pie_gradient = cell_state.get('pie_gradient', '') %}
 
                     <div class="hex {% if total_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %} {% if cell_id in blocked_cells %}blocked{% endif %}"
                          id="{{ cell_id }}"
                          data-cell="{{ cell_id }}"
-                        style="{% if cluster_owner and cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}">
+                         style="{% if cluster_owner and cluster_color %}background: {{ cluster_color }};{% elif pie_gradient != '' %}background: {{ pie_gradient }};{% endif %}">
 
                         <div class="hex-content">
                             <span class="total" id="total-{{ cell_id }}" style="font-size: {{ vote_font_size }}px; line-height: 1;">
@@ -86,23 +75,151 @@
 
 {% block scripts %}
     <script>
+        const apiStateUrl = {{ url_for('main.api_state')|tojson }};
+        const apiEventsUrl = {{ url_for('main.api_events')|tojson }};
+        const adminUpdateUrl = {{ url_for('main.admin_update_results')|tojson }};
+        const adminStartUrl = {{ url_for('main.admin_start_final_stage')|tojson }};
+        const dashboardState = {
+            isAdmin: true,
+            revealMode: {{ reveal_mode|tojson }},
+            finalStage: {{ final_stage|tojson }},
+            placementOrder: {{ placement_order|tojson }},
+            clusterScores: {{ cluster_scores|tojson }},
+            rowLengths: {{ row_lengths|tojson }},
+            blockedCells: new Set({{ blocked_cells|tojson }}),
+            cells: {{ cells|tojson }},
+        };
+
+        let refreshInFlight = false;
+        let refreshRequested = false;
+        let dashboardEventSource = null;
+
+        function renderAdminControls(state) {
+            const controls = document.getElementById('admin-controls');
+            if (!controls) return;
+
+            if (state.finalStage) {
+                controls.innerHTML = `
+                    <button class="btn btn-admin" onclick="updateResults()">Next Round</button>
+                    <button class="btn btn-admin" disabled>Final Stage Active</button>
+                    <p id="placement-order-line" style="margin-top: 10px; font-size: 14px; color: #c1c1c8;">Placement order: ${(state.placementOrder || []).join(', ')}</p>
+                `;
+                return;
+            }
+
+            controls.innerHTML = `
+                <button class="btn btn-admin" onclick="updateResults()">Next Round</button>
+                <button class="btn btn-admin" onclick="startFinalStage()">!!! Final Stage !!!</button>
+            `;
+        }
+
+        function renderScoreCards(state) {
+            const container = document.getElementById('admin-score-cards');
+            if (!container) return;
+            const scores = Object.entries(state.clusterScores || {}).sort(([left], [right]) => left.localeCompare(right));
+            container.innerHTML = scores.map(([user, score]) => `
+                <div style="background:#29292e; border:1px solid #323238; border-radius:12px; padding:12px 14px; min-width:120px; text-align:center;">
+                    <div style="font-size:12px; color:#8d8d99; text-transform:capitalize;">${user}</div>
+                    <div style="font-size:18px; font-weight:700; margin-top:4px;">${score}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateCells(state) {
+            Object.entries(state.cells || {}).forEach(([cellId, cellData]) => {
+                const cellEl = document.getElementById(cellId);
+                const totalEl = document.getElementById(`total-${cellId}`);
+                if (!cellEl || !totalEl) return;
+
+                const totalVotes = Number(cellData.total_votes || 0);
+                const voteFontSize = Math.min(19, 12 + Math.floor(totalVotes / 25));
+                cellEl.classList.toggle('blocked', !!cellData.blocked);
+                cellEl.classList.toggle('cluster-member', !!cellData.cluster_owner);
+                cellEl.classList.toggle('user-voted', totalVotes > 0);
+                totalEl.textContent = String(totalVotes);
+                totalEl.style.fontSize = `${voteFontSize}px`;
+
+                if (cellData.cluster_owner && cellData.cluster_color) {
+                    cellEl.style.background = cellData.cluster_color;
+                } else if (cellData.pie_gradient) {
+                    cellEl.style.background = cellData.pie_gradient;
+                } else {
+                    cellEl.style.background = '';
+                }
+            });
+        }
+
+        function applyDashboardState(state) {
+            dashboardState.finalStage = !!state.final_stage;
+            dashboardState.revealMode = !!state.reveal_mode;
+            dashboardState.placementOrder = state.placement_order || [];
+            dashboardState.clusterScores = state.cluster_scores || {};
+            dashboardState.cells = state.cells || {};
+
+            renderAdminControls(dashboardState);
+            renderScoreCards(dashboardState);
+            updateCells(dashboardState);
+        }
+
+        async function refreshDashboardState() {
+            if (refreshInFlight) {
+                refreshRequested = true;
+                return;
+            }
+
+            refreshInFlight = true;
+            try {
+                const response = await fetch(apiStateUrl, { credentials: 'same-origin' });
+                const data = await response.json();
+                if (data.success && data.state) {
+                    applyDashboardState(data.state);
+                }
+            } catch (error) {
+                console.error('Dashboard refresh failed', error);
+            } finally {
+                refreshInFlight = false;
+                if (refreshRequested) {
+                    refreshRequested = false;
+                    refreshDashboardState();
+                }
+            }
+        }
+
+        function connectDashboardStream() {
+            if (!window.EventSource) return;
+            dashboardEventSource = new EventSource(apiEventsUrl);
+            dashboardEventSource.addEventListener('ready', refreshDashboardState);
+            dashboardEventSource.addEventListener('dashboard_update', refreshDashboardState);
+        }
+
         function updateResults() {
-            fetch('{{ url_for('main.admin_update_results') }}', { method: 'POST' })
+            fetch(adminUpdateUrl, { method: 'POST' })
             .then(res => res.json())
-            .then(data => { if (data.success) location.reload(); else alert('Unable to update admin results.'); })
+            .then(data => {
+                if (data.success) {
+                    refreshDashboardState();
+                } else {
+                    alert('Unable to update admin results.');
+                }
+            })
             .catch(err => { console.error('Update results failed', err); alert('Update failed'); });
         }
 
         function startFinalStage() {
-            fetch('{{ url_for('main.admin_start_final_stage') }}', { method: 'POST' })
+            fetch(adminStartUrl, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    location.reload();
+                    refreshDashboardState();
                 } else {
                     alert('Unable to start final stage.');
                 }
             });
         }
+
+        renderAdminControls(dashboardState);
+        renderScoreCards(dashboardState);
+        updateCells(dashboardState);
+        connectDashboardStream();
     </script>
 {% endblock %}
