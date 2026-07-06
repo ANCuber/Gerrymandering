@@ -245,6 +245,14 @@ def api_vote():
 	data = request.json or {}
 	cell_id = data.get('cell_id')
 	action = data.get('action')
+	amount_raw = data.get('amount', 1)
+	try:
+		amount = int(amount_raw)
+	except (TypeError, ValueError):
+		return jsonify({'success': False, 'error': 'Invalid amount'}), 400
+
+	if amount < 1:
+		return jsonify({'success': False, 'error': 'Amount must be at least 1'}), 400
 
 	if is_cell_blocked(cell_id):
 		return jsonify({'success': False, 'error': 'This cell is unavailable'}), 400
@@ -253,7 +261,7 @@ def api_vote():
 
 	with get_db() as conn:
 		if action == 'add':
-			if remaining <= 0:
+			if remaining < amount:
 				return jsonify({'success': False, 'error': 'No ballots left!'}), 400
 
 			current_row = conn.execute(
@@ -261,7 +269,7 @@ def api_vote():
 				(username, cell_id),
 			).fetchone()
 			current_ballots = current_row['ballots_spent'] if current_row else 0
-			if current_ballots >= MAX_BALLOTS_PER_CELL_PER_USER:
+			if current_ballots + amount > MAX_BALLOTS_PER_CELL_PER_USER:
 				return jsonify({
 					'success': False,
 					'error': f'You can place at most {MAX_BALLOTS_PER_CELL_PER_USER} ballots on a single grid.',
@@ -270,11 +278,31 @@ def api_vote():
 			conn.execute(
 				'''
 				INSERT INTO grid_votes (username, cell_id, ballots_spent)
-				VALUES (?, ?, 1)
-				ON CONFLICT(username, cell_id) DO UPDATE SET ballots_spent = ballots_spent + 1
+				VALUES (?, ?, ?)
+				ON CONFLICT(username, cell_id) DO UPDATE SET ballots_spent = ballots_spent + ?
 				''',
-				(username, cell_id),
+				(username, cell_id, amount, amount),
 			)
+		elif action == 'remove':
+			locked_ballots = get_locked_ballots(username, cell_id)
+			current_row = conn.execute(
+				'SELECT ballots_spent FROM grid_votes WHERE username = ? AND cell_id = ?',
+				(username, cell_id),
+			).fetchone()
+			current_ballots = current_row['ballots_spent'] if current_row else 0
+			removable = max(0, current_ballots - locked_ballots)
+
+			if removable < amount:
+				return jsonify({'success': False, 'error': 'This grid cannot be decreased any further.'}), 400
+
+			new_ballots = current_ballots - amount
+			if new_ballots > 0:
+				conn.execute(
+					'UPDATE grid_votes SET ballots_spent = ? WHERE username = ? AND cell_id = ?',
+					(new_ballots, username, cell_id),
+				)
+			else:
+				conn.execute('DELETE FROM grid_votes WHERE username = ? AND cell_id = ?', (username, cell_id))
 		elif action == 'clear':
 			locked_ballots = get_locked_ballots(username, cell_id)
 			current_row = conn.execute(
@@ -291,6 +319,8 @@ def api_vote():
 					)
 			else:
 				conn.execute('DELETE FROM grid_votes WHERE username = ? AND cell_id = ?', (username, cell_id))
+		else:
+			return jsonify({'success': False, 'error': 'Invalid action'}), 400
 
 		conn.commit()
 		updated_row = conn.execute(

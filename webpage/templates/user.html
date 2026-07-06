@@ -24,7 +24,19 @@
                 {% endif %}
             {% else %}
                 <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p>
+                <p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Cluster tiles are visible for preview, but placement unlocks only after the admin starts the final stage.</p>
+                <p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Drag vote tokens (-1, +5, -5, +10, -10) onto any available grid for batch changes.</p>
             {% endif %}
+        </div>
+    </div>
+
+    <div id="vote-token-wrapper" style="display: {% if final_stage %}none{% else %}block{% endif %};">
+        <div class="vote-token-tray" id="vote-token-tray">
+            <div class="vote-token remove" draggable="true" data-vote-action="remove" data-vote-amount="1">-1</div>
+            <div class="vote-token add" draggable="true" data-vote-action="add" data-vote-amount="5">+5</div>
+            <div class="vote-token remove" draggable="true" data-vote-action="remove" data-vote-amount="5">-5</div>
+            <div class="vote-token add" draggable="true" data-vote-action="add" data-vote-amount="10">+10</div>
+            <div class="vote-token remove" draggable="true" data-vote-action="remove" data-vote-amount="10">-10</div>
         </div>
     </div>
 
@@ -65,7 +77,7 @@
         </div>
     </div>
 
-    <div id="cluster-palette-wrapper" style="display: {% if final_stage %}block{% else %}none{% endif %};">
+    <div id="cluster-palette-wrapper" style="display: block;">
         <div class="cluster-palette" id="cluster-palette">
             {% for shape in shape_catalog %}
                 <div class="cluster-card {% if shape.id in used_shapes %}used{% endif %}"
@@ -113,6 +125,8 @@
         let dashboardEventSource = null;
         let refreshInFlight = false;
         let refreshRequested = false;
+        let currentVoteDrag = null;
+        let votePreviewCell = null;
 
         function rotateLeft(coord) {
             return [coord[0] + coord[1], -coord[0]];
@@ -208,6 +222,13 @@
             highlightedCells = [];
         }
 
+        function clearVotePreview() {
+            if (!votePreviewCell) return;
+            const previewEl = document.getElementById(votePreviewCell);
+            if (previewEl) previewEl.classList.remove('vote-drop-preview');
+            votePreviewCell = null;
+        }
+
         function clearAnchorSelection() {
             document.querySelectorAll('.hex.selected-anchor').forEach(el => el.classList.remove('selected-anchor'));
             selectedAnchor = null;
@@ -225,7 +246,7 @@
             const palette = document.getElementById('cluster-palette');
             if (!paletteWrapper || !palette) return;
 
-            paletteWrapper.style.display = dashboardState.finalStage ? 'block' : 'none';
+            paletteWrapper.style.display = 'block';
 
             const transparentImg = new Image();
             transparentImg.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
@@ -305,6 +326,46 @@
             });
         }
 
+        function renderVoteTokens() {
+            const wrapper = document.getElementById('vote-token-wrapper');
+            if (!wrapper) return;
+            wrapper.style.display = dashboardState.finalStage ? 'none' : 'block';
+        }
+
+        function initializeVoteTokenActions() {
+            document.querySelectorAll('.vote-token').forEach(tokenEl => {
+                if (tokenEl.dataset.bound === 'true') return;
+                tokenEl.dataset.bound = 'true';
+
+                tokenEl.addEventListener('dragstart', event => {
+                    if (dashboardState.finalStage) {
+                        event.preventDefault();
+                        return;
+                    }
+
+                    const action = tokenEl.dataset.voteAction;
+                    const amount = parseInt(tokenEl.dataset.voteAmount, 10) || 1;
+                    currentVoteDrag = { action, amount };
+                    tokenEl.classList.add('dragging');
+
+                    try {
+                        const payload = JSON.stringify(currentVoteDrag);
+                        event.dataTransfer.setData('application/json', payload);
+                        event.dataTransfer.setData('text/plain', payload);
+                        event.dataTransfer.effectAllowed = 'copy';
+                    } catch (e) {
+                        // Ignore dataTransfer restrictions in some environments.
+                    }
+                });
+
+                tokenEl.addEventListener('dragend', () => {
+                    tokenEl.classList.remove('dragging');
+                    currentVoteDrag = null;
+                    clearVotePreview();
+                });
+            });
+        }
+
         function initializeVoteActions() {
             document.querySelectorAll('.hex').forEach(hexElement => {
                 if (hexElement.dataset.voteBound === 'true' || hexElement.classList.contains('blocked')) return;
@@ -313,12 +374,14 @@
                 let pressTimer = null;
                 let isLongPress = false;
                 let touchMoved = false;
+                let pressActive = false;
 
                 const startPress = (e) => {
                     if (dashboardState.finalStage) return;
                     if (e.type === 'mousedown' && 'ontouchstart' in window) return;
                     isLongPress = false;
                     touchMoved = false;
+                    pressActive = true;
                     pressTimer = setTimeout(() => {
                         isLongPress = true;
                         handleVoteAction(hexElement.dataset.cell, 'clear');
@@ -328,12 +391,19 @@
                 const endPress = (e) => {
                     if (dashboardState.finalStage) return;
                     if (e.type === 'mouseup' && 'ontouchend' in window) return;
+                    if (!pressActive) return;
                     clearTimeout(pressTimer);
+                    pressTimer = null;
+                    pressActive = false;
                     if (touchMoved) return;
                     if (!isLongPress) handleVoteAction(hexElement.dataset.cell, 'add');
                 };
 
-                const cancelPress = () => clearTimeout(pressTimer);
+                const cancelPress = () => {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                    pressActive = false;
+                };
 
                 hexElement.addEventListener('mousedown', startPress);
                 hexElement.addEventListener('mouseup', endPress);
@@ -342,6 +412,28 @@
                 hexElement.addEventListener('touchend', endPress, { passive: true });
                 hexElement.addEventListener('touchmove', () => { touchMoved = true; cancelPress(); }, { passive: true });
                 hexElement.addEventListener('touchcancel', cancelPress, { passive: true });
+
+                hexElement.addEventListener('dragover', e => {
+                    if (dashboardState.finalStage || !currentVoteDrag) return;
+                    e.preventDefault();
+                    clearVotePreview();
+                    hexElement.classList.add('vote-drop-preview');
+                    votePreviewCell = hexElement.dataset.cell;
+                    e.dataTransfer.dropEffect = 'copy';
+                });
+
+                hexElement.addEventListener('dragleave', () => {
+                    if (votePreviewCell === hexElement.dataset.cell) {
+                        clearVotePreview();
+                    }
+                });
+
+                hexElement.addEventListener('drop', e => {
+                    if (dashboardState.finalStage || !currentVoteDrag) return;
+                    e.preventDefault();
+                    clearVotePreview();
+                    handleVoteAction(hexElement.dataset.cell, currentVoteDrag.action, currentVoteDrag.amount);
+                });
             });
         }
 
@@ -436,7 +528,7 @@
                 return;
             }
 
-            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p>';
+            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Cluster tiles are visible for preview, but placement unlocks only after the admin starts the final stage.</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Drag vote tokens (-1, +5, -5, +10, -10) onto any available grid for batch changes.</p>';
         }
 
         function updateCells(state) {
@@ -480,6 +572,7 @@
 
             renderUserStatusSection(dashboardState);
             renderClusterPalette();
+            renderVoteTokens();
             updateCells(dashboardState);
 
             if (!dashboardState.isUserTurn) {
@@ -552,11 +645,11 @@
             });
         }
 
-        function handleVoteAction(cellId, actionType) {
+        function handleVoteAction(cellId, actionType, amount = 1) {
             fetch(voteApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cell_id: cellId, action: actionType })
+                body: JSON.stringify({ cell_id: cellId, action: actionType, amount: amount })
             })
             .then(res => res.json())
             .then(data => {
@@ -587,6 +680,8 @@
         }
 
         renderClusterPalette();
+        renderVoteTokens();
+        initializeVoteTokenActions();
         initializeVoteActions();
         initializePlacementActions();
         applyDashboardState(dashboardState);

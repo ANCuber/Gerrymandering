@@ -46,6 +46,13 @@
         .cluster-preview svg { width: 100%; height: 100%; }
         .cluster-name { font-size: 13px; font-weight: 700; color: #f8f8ff; }
         .cluster-orientation { font-size: 11px; color: #a8a8b3; }
+        .vote-token-tray { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 10px auto 0; max-width: 520px; }
+        .vote-token { min-width: 56px; padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; letter-spacing: 0.2px; border: 1px solid #3b3b43; background: #191920; color: #f5f5f8; cursor: grab; user-select: none; transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+        .vote-token.add { border-color: rgba(4, 211, 97, 0.45); }
+        .vote-token.remove { border-color: rgba(247, 90, 104, 0.45); }
+        .vote-token:hover { transform: translateY(-1px); border-color: #9aa0ad; box-shadow: 0 4px 12px rgba(0,0,0,0.28); }
+        .vote-token.dragging { opacity: 0.7; transform: none; cursor: grabbing; }
+        .hex.vote-drop-preview { box-shadow: inset 0 0 0 4px rgba(255, 166, 0, 0.72); transform: scale(1.04); }
     </style>
     {% block head_extra %}{% endblock %}
 </head>
