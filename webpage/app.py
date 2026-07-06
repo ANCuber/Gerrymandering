@@ -19,7 +19,7 @@ def _parse_args_and_run():
     if args.groups is not None:
         if args.groups < 0:
             raise ValueError("Error: Number of groups must be non-negative.")
-        if args.groups > 10:
+        if args.groups > len(config.USER_REGISTRY):
             raise ValueError("Error: Too many groups.")
         try:
             config.GROUP_COUNT = int(args.groups)

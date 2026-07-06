@@ -191,6 +191,16 @@ def login():
 	active = get_active_user_registry()
 	if username in active and active[username]['secret'] == secret:
 		session['username'] = username
+		with get_db() as conn:
+			conn.execute(
+				'INSERT OR IGNORE INTO user_allowances (username, total_allowance) VALUES (?, ?)',
+				(username, TOTAL_ALLOWANCE),
+			)
+			conn.execute(
+				'INSERT OR IGNORE INTO cluster_scores (username, score) VALUES (?, 0)',
+				(username,),
+			)
+			conn.commit()
 		return redirect(url_for('main.index'))
 
 	return render_template('login.html', logged_in=False, error='Invalid Username or Secret Keyword.')
