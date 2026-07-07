@@ -218,7 +218,13 @@ def order_users_by_variance(user_votes_map):
     for username, votes in user_votes_map.items():
         variance = compute_allocation_variance(votes)
         scored.append((variance, username))
-    scored.sort(key=lambda item: (-item[0], item[1]))
+
+    def group_sort_key(username):
+        if isinstance(username, str) and username.startswith('group') and username[5:].isdigit():
+            return (0, int(username[5:]))
+        return (1, username)
+
+    scored.sort(key=lambda item: (-item[0], group_sort_key(item[1])))
     return [username for _, username in scored]
 
 

@@ -2,6 +2,11 @@
 
 {% block title %}Coconut Voting Room — Dashboard{% endblock %}
 
+{% block head_extra %}
+<style>
+</style>
+{% endblock %}
+
 {% block content %}
     <h1>⬡ Coconut Voting Room ⬡</h1>
     <div class="box">
@@ -77,7 +82,7 @@
         </div>
     </div>
 
-    <div id="cluster-palette-wrapper" style="display: block;">
+    <div id="cluster-palette-wrapper" style="display: {% if final_stage or username == 'example' %}block{% else %}none{% endif %};">
         <div class="cluster-palette" id="cluster-palette">
             {% for shape in shape_catalog %}
                 <div class="cluster-card {% if shape.id in used_shapes %}used{% endif %}"
@@ -92,6 +97,7 @@
             {% endfor %}
         </div>
     </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -104,6 +110,7 @@
         const dashboardState = {
             currentUser,
             isAdmin: false,
+            isExampleUser: {{ (username == 'example')|tojson }},
             revealMode: {{ reveal_mode|tojson }},
             finalStage: {{ final_stage|tojson }},
             isUserTurn: {{ (current_turn == username)|tojson }},
@@ -229,6 +236,10 @@
             votePreviewCell = null;
         }
 
+        function getActiveClusterPlacement() {
+            return currentDragData || selectedShape;
+        }
+
         function clearAnchorSelection() {
             document.querySelectorAll('.hex.selected-anchor').forEach(el => el.classList.remove('selected-anchor'));
             selectedAnchor = null;
@@ -261,7 +272,7 @@
 
                 renderShapePreview(preview, coords, orientation);
                 card.classList.toggle('used', isUsed);
-                card.draggable = dashboardState.finalStage && !isUsed;
+                card.draggable = (dashboardState.finalStage || dashboardState.isExampleUser) && !isUsed;
                 const nameEl = card.querySelector('.cluster-name');
                 if (nameEl) {
                     nameEl.textContent = isUsed ? `${shapeId} (used)` : shapeId;
@@ -276,7 +287,7 @@
                 card.dataset.bound = 'true';
 
                 card.addEventListener('click', () => {
-                    if (!dashboardState.finalStage || card.classList.contains('used')) return;
+                    if ((!dashboardState.finalStage && !dashboardState.isExampleUser) || card.classList.contains('used')) return;
                     document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
                     card.classList.add('selected');
                     selectedShape = { shapeId: card.dataset.shapeId, orientation, coords };
@@ -305,6 +316,7 @@
                 if (!isUsed) {
                     card.addEventListener('dragstart', event => {
                         currentDragData = { shapeId: card.dataset.shapeId, orientation, coords };
+                        selectedShape = { shapeId: card.dataset.shapeId, orientation, coords };
                         try {
                             const payload = JSON.stringify({ shapeId: card.dataset.shapeId, orientation });
                             event.dataTransfer.setData('application/json', payload);
@@ -318,7 +330,6 @@
                     });
 
                     card.addEventListener('dragend', () => {
-                        currentDragData = null;
                         clearDragPreview();
                         card.classList.remove('dragging');
                     });
@@ -438,21 +449,33 @@
         }
 
         function initializePlacementActions() {
+            const canPlaceClusters = dashboardState.finalStage || dashboardState.isExampleUser;
             document.querySelectorAll('.hex').forEach(hexElement => {
                 if (hexElement.dataset.placeBound === 'true' || hexElement.classList.contains('blocked')) return;
                 hexElement.dataset.placeBound = 'true';
 
                 hexElement.addEventListener('dragenter', e => {
-                    if (!dashboardState.finalStage || !currentDragData) return;
+                    const activeCluster = getActiveClusterPlacement();
+                    if (!canPlaceClusters || !activeCluster) return;
                     e.preventDefault();
+                    clearDragPreview();
+                    const cells = getPlacementCells(activeCluster.coords, hexElement.dataset.cell, activeCluster.orientation);
+                    cells.forEach(cellId => {
+                        const cellEl = document.getElementById(cellId);
+                        if (cellEl) {
+                            cellEl.classList.add('drag-preview');
+                            highlightedCells.push(cellId);
+                        }
+                    });
                 });
 
                 hexElement.addEventListener('dragover', e => {
-                    if (!dashboardState.finalStage || !currentDragData) return;
+                    const activeCluster = getActiveClusterPlacement();
+                    if (!canPlaceClusters || !activeCluster) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
                     clearDragPreview();
-                    const cells = getPlacementCells(currentDragData.coords, hexElement.dataset.cell, currentDragData.orientation);
+                    const cells = getPlacementCells(activeCluster.coords, hexElement.dataset.cell, activeCluster.orientation);
                     cells.forEach(cellId => {
                         const cellEl = document.getElementById(cellId);
                         if (cellEl) {
@@ -466,18 +489,45 @@
                     clearDragPreview();
                 });
 
+                hexElement.addEventListener('mouseenter', () => {
+                    if (!canPlaceClusters || !selectedShape) return;
+                    clearDragPreview();
+                    const cells = getPlacementCells(selectedShape.coords, hexElement.dataset.cell, selectedShape.orientation);
+                    cells.forEach(cellId => {
+                        const cellEl = document.getElementById(cellId);
+                        if (cellEl) {
+                            cellEl.classList.add('drag-preview');
+                            highlightedCells.push(cellId);
+                        }
+                    });
+                });
+
+                hexElement.addEventListener('mousemove', () => {
+                    if (!canPlaceClusters || !selectedShape) return;
+                    if (highlightedCells.length) return;
+                    const cells = getPlacementCells(selectedShape.coords, hexElement.dataset.cell, selectedShape.orientation);
+                    cells.forEach(cellId => {
+                        const cellEl = document.getElementById(cellId);
+                        if (cellEl) {
+                            cellEl.classList.add('drag-preview');
+                            highlightedCells.push(cellId);
+                        }
+                    });
+                });
+
+                hexElement.addEventListener('mouseleave', () => {
+                    if (!canPlaceClusters) return;
+                    clearDragPreview();
+                });
+
                 hexElement.addEventListener('click', () => {
-                    if (!dashboardState.finalStage || !dashboardState.isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
-                    clearAnchorSelection();
-                    selectedAnchor = hexElement.dataset.cell;
-                    hexElement.classList.add('selected-anchor');
-                    const selectedAnchorLabel = document.getElementById('selected-anchor');
-                    if (selectedAnchorLabel) selectedAnchorLabel.textContent = selectedAnchor;
-                    updatePlaceButtonState();
+                    if (!canPlaceClusters || !dashboardState.isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
+                    clearDragPreview();
+                    placeCluster(selectedShape.shapeId, hexElement.dataset.cell, selectedShape.orientation);
                 });
 
                 hexElement.addEventListener('drop', e => {
-                    if (!dashboardState.finalStage || !dashboardState.isUserTurn) return;
+                    if (!canPlaceClusters || !dashboardState.isUserTurn) return;
                     e.preventDefault();
                     clearDragPreview();
                     let payload = null;
@@ -510,12 +560,21 @@
             if (!statusSection) return;
 
             if (state.finalStage) {
-                const scoreEntries = Object.entries(state.clusterScores || {}).sort(([left], [right]) => left.localeCompare(right));
+                const scoreEntries = Object.entries(state.clusterScores || {}).sort(([left], [right]) => {
+                    const leftMatch = /^group(\d+)$/.exec(left);
+                    const rightMatch = /^group(\d+)$/.exec(right);
+                    if (leftMatch && rightMatch) return Number(leftMatch[1]) - Number(rightMatch[1]);
+                    if (leftMatch) return -1;
+                    if (rightMatch) return 1;
+                    return left.localeCompare(right);
+                });
                 const scoreSummary = scoreEntries.map(([user, score]) => `${user}: ${score}`).join(', ');
-                const turnMessage = state.isUserTurn
+                const turnMessage = state.isExampleUser
+                    ? '<p class="waiting-hint">🧪 Example account active. Cluster placements are accepted but have no effect on the game.</p>'
+                    : state.isUserTurn
                     ? '<p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>'
                     : `<p class="waiting-hint">⏳ Final stage active. Waiting for <strong>${state.currentTurn || 'the next player'}</strong> to place the next cluster.</p>`;
-                const selectedInfo = state.isUserTurn
+                const selectedInfo = (state.isUserTurn || state.isExampleUser)
                     ? '<p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>'
                     : '';
 
@@ -528,7 +587,7 @@
                 return;
             }
 
-            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Cluster tiles are visible for preview, but placement unlocks only after the admin starts the final stage.</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Drag vote tokens (-1, +5, -5, +10, -10) onto any available grid for batch changes.</p>';
+            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">' + (dashboardState.isExampleUser ? 'Example account can preview and place cluster tiles anytime, but those placements do not affect the game.' : 'Cluster tiles are visible for preview, but placement unlocks only after the admin starts the final stage.') + '</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Drag vote tokens (-1, +5, -5, +10, -10) onto any available grid for batch changes.</p>';
         }
 
         function updateCells(state) {
@@ -559,6 +618,7 @@
             dashboardState.revealMode = !!state.reveal_mode;
             dashboardState.finalStage = !!state.final_stage;
             dashboardState.isUserTurn = !!state.is_user_turn;
+            dashboardState.isExampleUser = !!state.is_example_user;
             dashboardState.remaining = state.remaining;
             dashboardState.currentTurn = state.current_turn;
             dashboardState.clusterScores = state.cluster_scores || {};
@@ -575,7 +635,7 @@
             renderVoteTokens();
             updateCells(dashboardState);
 
-            if (!dashboardState.isUserTurn) {
+            if (!dashboardState.isUserTurn && !dashboardState.isExampleUser) {
                 selectedShape = null;
                 selectedAnchor = null;
                 clearAnchorSelection();

@@ -34,6 +34,18 @@ _dashboard_lock = threading.Lock()
 _dashboard_revision = 0
 
 
+def _is_example_user(username):
+	return username == 'example'
+
+
+def _group_sort_key(username):
+	if not isinstance(username, str):
+		return (1, str(username))
+	if username.startswith('group') and username[5:].isdigit():
+		return (0, int(username[5:]))
+	return (1, username)
+
+
 def _dashboard_votes_for_user(username):
 	if username == ADMIN_USERNAME:
 		# Admin sees the frozen snapshot; it is refreshed by the Next Round action.
@@ -74,10 +86,14 @@ def _build_dashboard_state(username):
 	is_admin = username == ADMIN_USERNAME
 	reveal_mode = is_reveal_mode()
 	final_stage = is_final_stage_active()
-	show_results = is_admin or reveal_mode
+	show_results = is_admin or reveal_mode or final_stage
 	votes_by_cell, user_votes = _dashboard_votes_for_user(username)
 	cluster_placements, cluster_cell_owner, cluster_cell_shape, cluster_cell_color = _dashboard_cluster_maps()
-	cluster_scores = get_cluster_scores()
+	cluster_scores = {
+		user: score
+		for user, score in sorted(get_cluster_scores().items(), key=lambda item: _group_sort_key(item[0]))
+		if not _is_example_user(user)
+	}
 	remaining = None if is_admin else get_user_remaining_ballots(username)
 	current_turn = get_current_placement_user() if final_stage else None
 	used_shapes = get_user_used_shape_ids(username) if final_stage and not is_admin else []
@@ -93,10 +109,11 @@ def _build_dashboard_state(username):
 			total_votes = sum(item['ballots'] for item in votes_list)
 			cluster_owner = cluster_cell_owner.get(cell_id)
 			pie_gradient = ''
+			display_votes_list = [item for item in votes_list if not (is_admin and item['username'] == 'example')]
 			if show_results and total_votes > 0 and not cluster_owner:
 				current_pct = 0.0
 				gradient_parts = []
-				for item in votes_list:
+				for item in display_votes_list:
 					item_pct = (item['ballots'] / total_votes) * 100
 					next_pct = current_pct + item_pct
 					gradient_parts.append(f"{item['color']} {current_pct:.2f}% {next_pct:.2f}%")
@@ -118,6 +135,7 @@ def _build_dashboard_state(username):
 	return {
 		'username': username,
 		'is_admin': is_admin,
+		'is_example_user': _is_example_user(username),
 		'reveal_mode': reveal_mode,
 		'final_stage': final_stage,
 		'show_results': show_results,
@@ -366,6 +384,8 @@ def admin_update_results():
 	snapshot = {}
 	rows = fetch_ballot_votes()
 	for row in rows:
+		if _is_example_user(row['username']):
+			continue
 		cell_id = row['cell_id']
 		snapshot.setdefault(cell_id, []).append({
 			'username': row['username'],
@@ -384,8 +404,10 @@ def admin_start_final_stage():
 		return jsonify({'success': False}), 403
 
 	ballot_rows = fetch_ballot_votes()
-	ballots_by_user = {username: {} for username in USER_REGISTRY}
+	ballots_by_user = {username: {} for username in USER_REGISTRY if not _is_example_user(username)}
 	for row in ballot_rows:
+		if _is_example_user(row['username']):
+			continue
 		ballots_by_user.setdefault(row['username'], {})[row['cell_id']] = row['ballots_spent']
 
 	placement_order = order_users_by_variance(ballots_by_user)
@@ -394,6 +416,8 @@ def admin_start_final_stage():
 	snapshot = {}
 	rows = fetch_ballot_votes()
 	for row in rows:
+		if _is_example_user(row['username']):
+			continue
 		cell_id = row['cell_id']
 		snapshot.setdefault(cell_id, []).append({
 			'username': row['username'],
@@ -411,10 +435,20 @@ def api_place_cluster():
 	if 'username' not in session or session['username'] == ADMIN_USERNAME:
 		return jsonify({'success': False, 'error': 'Unauthorized'}), 401
 
+	username = session['username']
+	if _is_example_user(username):
+		return jsonify({
+			'success': True,
+			'next_user': get_current_placement_user() if is_final_stage_active() else None,
+			'winner': None,
+			'cluster_cells': [],
+			'total_ballots': 0,
+			'noop': True,
+		})
+
 	if not is_final_stage_active():
 		return jsonify({'success': False, 'error': 'Final stage is not active'}), 400
 
-	username = session['username']
 	current_user = get_current_placement_user()
 	if username != current_user:
 		return jsonify({'success': False, 'error': 'Not your turn'}), 400

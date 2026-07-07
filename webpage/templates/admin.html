@@ -116,7 +116,14 @@
         function renderScoreCards(state) {
             const container = document.getElementById('admin-score-cards');
             if (!container) return;
-            const scores = Object.entries(state.clusterScores || {}).sort(([left], [right]) => left.localeCompare(right));
+            const scores = Object.entries(state.clusterScores || {}).sort(([left], [right]) => {
+                const leftMatch = /^group(\d+)$/.exec(left);
+                const rightMatch = /^group(\d+)$/.exec(right);
+                if (leftMatch && rightMatch) return Number(leftMatch[1]) - Number(rightMatch[1]);
+                if (leftMatch) return -1;
+                if (rightMatch) return 1;
+                return left.localeCompare(right);
+            });
             container.innerHTML = scores.map(([user, score]) => `
                 <div style="background:#29292e; border:1px solid #323238; border-radius:12px; padding:12px 14px; min-width:120px; text-align:center;">
                     <div style="font-size:12px; color:#8d8d99; text-transform:capitalize;">${user}</div>
