@@ -4,6 +4,97 @@
 
 {% block head_extra %}
 <style>
+    .cluster-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(5, 7, 12, 0.72);
+        backdrop-filter: blur(8px);
+        z-index: 2000;
+    }
+
+    .cluster-confirm-overlay.visible {
+        display: flex;
+    }
+
+    .cluster-confirm-window {
+        width: min(92vw, 520px);
+        background: linear-gradient(180deg, #1c1c24 0%, #111117 100%);
+        border: 1px solid #353544;
+        border-radius: 18px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+        padding: 20px;
+        text-align: left;
+    }
+
+    .cluster-confirm-title {
+        font-size: 18px;
+        font-weight: 800;
+        margin: 0 0 8px 0;
+        color: #f5f5fb;
+    }
+
+    .cluster-confirm-meta {
+        color: #c1c1c8;
+        font-size: 13px;
+        line-height: 1.55;
+        margin: 0 0 12px 0;
+    }
+
+    .cluster-confirm-preview {
+        background: #0d0d13;
+        border: 1px solid #2f2f3c;
+        border-radius: 14px;
+        padding: 12px 14px;
+        margin: 14px 0 16px 0;
+    }
+
+    .cluster-confirm-cells {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+    }
+
+    .cluster-confirm-cell {
+        min-width: 54px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #ffffff;
+        color: #111;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .cluster-confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    .cluster-confirm-btn {
+        border: none;
+        border-radius: 10px;
+        padding: 11px 16px;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .cluster-confirm-btn.cancel {
+        background: #31313d;
+        color: #f5f5fb;
+    }
+
+    .cluster-confirm-btn.confirm {
+        background: #04d361;
+        color: #07110b;
+    }
 </style>
 {% endblock %}
 
@@ -98,6 +189,21 @@
         </div>
     </div>
 
+    <div class="cluster-confirm-overlay" id="cluster-confirm-overlay" aria-hidden="true">
+        <div class="cluster-confirm-window" role="dialog" aria-modal="true" aria-labelledby="cluster-confirm-title">
+            <h2 class="cluster-confirm-title" id="cluster-confirm-title">Review cluster placement</h2>
+            <p class="cluster-confirm-meta" id="cluster-confirm-meta"></p>
+            <div class="cluster-confirm-preview">
+                <div style="font-size: 12px; color: #8d8d99; text-transform: uppercase; letter-spacing: .08em;">Covered grids</div>
+                <div class="cluster-confirm-cells" id="cluster-confirm-cells"></div>
+            </div>
+            <div class="cluster-confirm-actions">
+                <button class="cluster-confirm-btn cancel" type="button" id="cluster-confirm-cancel">Cancel</button>
+                <button class="cluster-confirm-btn confirm" type="button" id="cluster-confirm-submit">Place Cluster</button>
+            </div>
+        </div>
+    </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -134,6 +240,7 @@
         let refreshRequested = false;
         let currentVoteDrag = null;
         let votePreviewCell = null;
+        let pendingClusterPlacement = null;
 
         function rotateLeft(coord) {
             return [coord[0] + coord[1], -coord[0]];
@@ -238,6 +345,41 @@
 
         function getActiveClusterPlacement() {
             return currentDragData || selectedShape;
+        }
+
+        function closeClusterConfirmModal() {
+            const overlay = document.getElementById('cluster-confirm-overlay');
+            if (overlay) {
+                overlay.classList.remove('visible');
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+            pendingClusterPlacement = null;
+        }
+
+        function openClusterConfirmModal(shapeId, anchor, orientation) {
+            const overlay = document.getElementById('cluster-confirm-overlay');
+            const meta = document.getElementById('cluster-confirm-meta');
+            const cellsContainer = document.getElementById('cluster-confirm-cells');
+            if (!overlay || !meta || !cellsContainer) return;
+
+            const shape = dashboardState.shapeCatalog.find(item => item.id === shapeId);
+            const cells = shape ? getPlacementCells(shape.coords, anchor, orientation) : [];
+            pendingClusterPlacement = { shapeId, anchor, orientation, cells };
+
+            meta.textContent = `Shape ${shapeId} at ${anchor} with rotation ${orientation}. Check the covered cells below before confirming.`;
+            cellsContainer.innerHTML = cells.length
+                ? cells.map(cellId => `<span class="cluster-confirm-cell">${cellId}</span>`).join('')
+                : '<span style="color:#f75a68; font-size: 13px;">This placement is invalid or would extend outside the board.</span>';
+
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function submitPendingClusterPlacement() {
+            if (!pendingClusterPlacement) return;
+            const { shapeId, anchor, orientation } = pendingClusterPlacement;
+            closeClusterConfirmModal();
+            placeCluster(shapeId, anchor, orientation);
         }
 
         function clearAnchorSelection() {
@@ -449,14 +591,14 @@
         }
 
         function initializePlacementActions() {
-            const canPlaceClusters = dashboardState.finalStage || dashboardState.isExampleUser;
+            const canPlaceClusters = () => dashboardState.finalStage || dashboardState.isExampleUser;
             document.querySelectorAll('.hex').forEach(hexElement => {
                 if (hexElement.dataset.placeBound === 'true' || hexElement.classList.contains('blocked')) return;
                 hexElement.dataset.placeBound = 'true';
 
                 hexElement.addEventListener('dragenter', e => {
                     const activeCluster = getActiveClusterPlacement();
-                    if (!canPlaceClusters || !activeCluster) return;
+                    if (!canPlaceClusters() || !activeCluster) return;
                     e.preventDefault();
                     clearDragPreview();
                     const cells = getPlacementCells(activeCluster.coords, hexElement.dataset.cell, activeCluster.orientation);
@@ -471,7 +613,7 @@
 
                 hexElement.addEventListener('dragover', e => {
                     const activeCluster = getActiveClusterPlacement();
-                    if (!canPlaceClusters || !activeCluster) return;
+                    if (!canPlaceClusters() || !activeCluster) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
                     clearDragPreview();
@@ -490,7 +632,7 @@
                 });
 
                 hexElement.addEventListener('mouseenter', () => {
-                    if (!canPlaceClusters || !selectedShape) return;
+                    if (!canPlaceClusters() || !selectedShape) return;
                     clearDragPreview();
                     const cells = getPlacementCells(selectedShape.coords, hexElement.dataset.cell, selectedShape.orientation);
                     cells.forEach(cellId => {
@@ -503,7 +645,7 @@
                 });
 
                 hexElement.addEventListener('mousemove', () => {
-                    if (!canPlaceClusters || !selectedShape) return;
+                    if (!canPlaceClusters() || !selectedShape) return;
                     if (highlightedCells.length) return;
                     const cells = getPlacementCells(selectedShape.coords, hexElement.dataset.cell, selectedShape.orientation);
                     cells.forEach(cellId => {
@@ -516,18 +658,18 @@
                 });
 
                 hexElement.addEventListener('mouseleave', () => {
-                    if (!canPlaceClusters) return;
+                    if (!canPlaceClusters()) return;
                     clearDragPreview();
                 });
 
                 hexElement.addEventListener('click', () => {
-                    if (!canPlaceClusters || !dashboardState.isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
+                    if (!canPlaceClusters() || !dashboardState.isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
                     clearDragPreview();
-                    placeCluster(selectedShape.shapeId, hexElement.dataset.cell, selectedShape.orientation);
+                    openClusterConfirmModal(selectedShape.shapeId, hexElement.dataset.cell, selectedShape.orientation);
                 });
 
                 hexElement.addEventListener('drop', e => {
-                    if (!canPlaceClusters || !dashboardState.isUserTurn) return;
+                    if (!canPlaceClusters() || !dashboardState.isUserTurn) return;
                     e.preventDefault();
                     clearDragPreview();
                     let payload = null;
@@ -549,7 +691,7 @@
                     if (!payload) return;
                     const shapeId = payload.shapeId || payload.shape_id;
                     const orientation = (payload.orientation != null) ? payload.orientation : 0;
-                    placeCluster(shapeId, hexElement.dataset.cell, orientation);
+                    openClusterConfirmModal(shapeId, hexElement.dataset.cell, orientation);
                     currentDragData = null;
                 });
             });
@@ -744,6 +886,24 @@
         initializeVoteTokenActions();
         initializeVoteActions();
         initializePlacementActions();
+
+        const clusterConfirmOverlay = document.getElementById('cluster-confirm-overlay');
+        const clusterConfirmCancel = document.getElementById('cluster-confirm-cancel');
+        const clusterConfirmSubmit = document.getElementById('cluster-confirm-submit');
+        if (clusterConfirmOverlay) {
+            clusterConfirmOverlay.addEventListener('click', event => {
+                if (event.target === clusterConfirmOverlay) closeClusterConfirmModal();
+            });
+        }
+        if (clusterConfirmCancel) {
+            clusterConfirmCancel.addEventListener('click', closeClusterConfirmModal);
+        }
+        if (clusterConfirmSubmit) {
+            clusterConfirmSubmit.addEventListener('click', submitPendingClusterPlacement);
+        }
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeClusterConfirmModal();
+        });
         applyDashboardState(dashboardState);
         connectDashboardStream();
     </script>
