@@ -429,6 +429,7 @@
         function renderShapePreview(container, coords, orientation) {
             const svgNS = 'http://www.w3.org/2000/svg';
             const SQRT3 = Math.sqrt(3);
+            const FIXED_HEX_SIZE = 5.5;
             const rotated = rotateCoords(coords, orientation);
             const containerWidth = container.clientWidth || 60;
             const containerHeight = container.clientHeight || 46;
@@ -457,7 +458,8 @@
             const height = Math.max(maxY - minY, 1);
             const availableWidth = Math.max(containerWidth - padding * 2, 1);
             const availableHeight = Math.max(containerHeight - padding * 2, 1);
-            const scale = Math.max(2, Math.min(availableWidth / width, availableHeight / height));
+            const maxScaleByBounds = Math.min(availableWidth / width, availableHeight / height);
+            const scale = Math.max(2, Math.min(FIXED_HEX_SIZE, maxScaleByBounds));
             const hexSize = scale;
             const offsetX = (containerWidth - width * scale) / 2 - minX * scale;
             const offsetY = (containerHeight - height * scale) / 2 - minY * scale;
