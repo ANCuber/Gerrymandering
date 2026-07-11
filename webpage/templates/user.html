@@ -77,6 +77,11 @@
         text-align: left;
     }
 
+    .cluster-confirm-result-value {
+        color: #ffffff;
+        font-weight: 800;
+    }
+
     .cluster-confirm-actions {
         display: flex;
         justify-content: flex-end;
@@ -322,7 +327,6 @@
                         {% for c in range(1, count + 1) %}
                             {% set cell_id = "R" ~ r ~ "C" ~ c %}
                             {% set cell_state = cells.get(cell_id, {}) %}
-                            {% set votes_list = cell_state.get('votes_list', []) %}
                             {% set total_votes = cell_state.get('total_votes', 0) %}
                             {% set my_votes = cell_state.get('my_votes', 0) %}
                             {% set show_results = cell_state.get('show_results', false) %}
@@ -376,6 +380,7 @@
         const apiStateUrl = {{ url_for('main.api_state')|tojson }};
         const apiEventsUrl = {{ url_for('main.api_events')|tojson }};
         const voteApiUrl = {{ url_for('main.api_vote')|tojson }};
+        const clusterPreviewUrl = {{ url_for('main.api_cluster_preview')|tojson }};
         const placeClusterUrl = {{ url_for('main.api_place_cluster')|tojson }};
         const dashboardState = {
             currentUser,
@@ -507,36 +512,6 @@
             return rotated.map(([dx, dy]) => axialToCellId(anchor.x + dx, anchor.y + dy)).filter(Boolean);
         }
 
-        function getPlacementOutcome(cells) {
-            const ballotsPerUser = {};
-            cells.forEach(cellId => {
-                const cellState = dashboardState.cells[cellId] || {};
-                const votes = cellState.votes_list || [];
-                votes.forEach(({ username, ballots }) => {
-                    ballotsPerUser[username] = (ballotsPerUser[username] || 0) + (Number(ballots) || 0);
-                });
-            });
-
-            const entries = Object.entries(ballotsPerUser);
-            const totalBallots = entries.reduce((acc, [, ballots]) => acc + ballots, 0);
-            if (!entries.length) {
-                return { winner: null, scoreGain: 0, maxBallots: 0, tiedUsers: [] };
-            }
-
-            const maxBallots = Math.max(...entries.map(([, ballots]) => ballots));
-            const tiedUsers = entries
-                .filter(([, ballots]) => ballots === maxBallots)
-                .map(([username]) => username);
-
-            const winner = (tiedUsers.length === 1 && maxBallots > 0) ? tiedUsers[0] : null;
-            return {
-                winner,
-                scoreGain: winner ? totalBallots : 0,
-                maxBallots,
-                tiedUsers,
-            };
-        }
-
         function clearDragPreview() {
             highlightedCells.forEach(cellId => {
                 const cellEl = document.getElementById(cellId);
@@ -558,9 +533,13 @@
 
         function closeClusterConfirmModal() {
             const overlay = document.getElementById('cluster-confirm-overlay');
+            const submitBtn = document.getElementById('cluster-confirm-submit');
             if (overlay) {
                 overlay.classList.remove('visible');
                 overlay.setAttribute('aria-hidden', 'true');
+            }
+            if (submitBtn) {
+                submitBtn.disabled = true;
             }
             pendingClusterPlacement = null;
         }
@@ -569,6 +548,7 @@
             const overlay = document.getElementById('cluster-confirm-overlay');
             const meta = document.getElementById('cluster-confirm-meta');
             const cellsContainer = document.getElementById('cluster-confirm-cells');
+            const submitBtn = document.getElementById('cluster-confirm-submit');
             if (!overlay || !meta || !cellsContainer) return;
 
             const shape = dashboardState.shapeCatalog.find(item => item.id === shapeId);
@@ -576,27 +556,68 @@
             pendingClusterPlacement = { shapeId, anchor, orientation, cells };
 
             meta.textContent = `板塊 ${shapeId}。`;
+            if (submitBtn) {
+                submitBtn.disabled = true;
+            }
             if (!shape || cells.length !== 5) {
                 cellsContainer.innerHTML = '<span style="color:#f75a68; font-size: 13px;">此放置無效，或超出棋盤範圍。</span>';
             } else {
-                const outcome = getPlacementOutcome(cells);
-                let winnerLine = '';
-                let scoreLine = '';
-                if (outcome.winner) {
-                    winnerLine = `獲勝者：<strong>${outcome.winner}</strong>`;
-                    scoreLine = `得分增加：<strong>+${outcome.scoreGain}</strong>`;
-                } else if (outcome.maxBallots > 0) {
-                    winnerLine = `獲勝者：<strong>無（平手）</strong>`;
-                    scoreLine = '得分增加：<strong>+0</strong>';
-                } else {
-                    winnerLine = '獲勝者：<strong>無（無票數）</strong>';
-                    scoreLine = '得分增加：<strong>+0</strong>';
-                }
-
                 cellsContainer.innerHTML = `
-                    <div class="cluster-confirm-result-line">${winnerLine}</div>
-                    <div class="cluster-confirm-result-line">${scoreLine}</div>
+                    <div class="cluster-confirm-result-line">預測獲勝者：<span class="cluster-confirm-result-value">計算中...</span></div>
+                    <div class="cluster-confirm-result-line">預測獲勝得分：<span class="cluster-confirm-result-value">計算中...</span></div>
                 `;
+
+                fetch(clusterPreviewUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shape_id: shapeId, anchor, orientation })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!pendingClusterPlacement) return;
+                    if (
+                        pendingClusterPlacement.shapeId !== shapeId ||
+                        pendingClusterPlacement.anchor !== anchor ||
+                        pendingClusterPlacement.orientation !== orientation
+                    ) {
+                        return;
+                    }
+
+                    if (!data.success) {
+                        cellsContainer.innerHTML = `<div class="cluster-confirm-result-line" style="color:#f75a68;">${data.error || '無法預覽此放置。'}</div>`;
+                        return;
+                    }
+
+                    let winnerLine = '';
+                    let scoreLine = '';
+                    let marginLine = '';
+                    if (data.winner) {
+                        winnerLine = `預測獲勝者：<span class="cluster-confirm-result-value">${data.winner}</span>`;
+                        scoreLine = `預測獲勝得分：<span class="cluster-confirm-result-value">+${data.score_gain || 0}</span>`;
+                    } else if (data.is_tie) {
+                        winnerLine = '預測獲勝者：<span class="cluster-confirm-result-value">無（平手）</span>';
+                        scoreLine = '預測獲勝得分：<span class="cluster-confirm-result-value">+0</span>';
+                    } else {
+                        winnerLine = '預測獲勝者：<span class="cluster-confirm-result-value">無（無票數）</span>';
+                        scoreLine = '預測獲勝得分：<span class="cluster-confirm-result-value">+0</span>';
+                    }
+
+                    cellsContainer.innerHTML = `
+                        <div class="cluster-confirm-result-line">${winnerLine}</div>
+                        <div class="cluster-confirm-result-line">${scoreLine}</div>
+                        <div class="cluster-confirm-result-line">${marginLine}</div>
+                    `;
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        if (data.success) {
+                            submitBtn.disabled = false;
+                        }
+                    }
+                })
+                .catch(() => {
+                    if (!pendingClusterPlacement) return;
+                    cellsContainer.innerHTML = '<div class="cluster-confirm-result-line" style="color:#f75a68;">預覽失敗，請稍後再試。</div>';
+                });
             }
 
             overlay.classList.add('visible');
@@ -618,6 +639,7 @@
         }
 
         function updatePlaceButtonState() {
+            const placeButton = document.getElementById('place-cluster-btn');
             if (!placeButton) return;
             placeButton.disabled = !selectedShape || !selectedAnchor;
         }

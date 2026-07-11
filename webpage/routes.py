@@ -110,8 +110,6 @@ def _enforce_final_stage_turn_progress():
 			_set_current_turn_deadline()
 			_broadcast_dashboard_update('dashboard_update', {
 				'reason': 'turn_skipped_example',
-				'skipped_user': current_user,
-				'next_user': next_user,
 			})
 			continue
 
@@ -120,8 +118,6 @@ def _enforce_final_stage_turn_progress():
 			_set_current_turn_deadline()
 			_broadcast_dashboard_update('dashboard_update', {
 				'reason': 'turn_skipped_no_valid_placement',
-				'skipped_user': current_user,
-				'next_user': next_user,
 			})
 			continue
 
@@ -136,8 +132,6 @@ def _enforce_final_stage_turn_progress():
 			_set_current_turn_deadline()
 			_broadcast_dashboard_update('dashboard_update', {
 				'reason': 'turn_timed_out',
-				'skipped_user': current_user,
-				'next_user': next_user,
 			})
 			continue
 
@@ -164,24 +158,32 @@ def _current_per_cell_cap():
 	return MAX_BALLOTS_PER_CELL_PER_USER + (round_number - 1) * 5
 
 
-def _dashboard_votes_for_user(username):
+def _dashboard_votes_for_user(username, include_full_breakdown=False):
 	if username == ADMIN_USERNAME:
 		# Admin sees the frozen snapshot; it is refreshed by the Next Round action.
-		return get_admin_snapshot(), {}
+		votes_by_cell = get_admin_snapshot()
+		totals_by_cell = {
+			cell_id: sum(item.get('ballots', 0) for item in votes)
+			for cell_id, votes in votes_by_cell.items()
+		}
+		return votes_by_cell, totals_by_cell, {}
 
 	rows = fetch_ballot_votes()
 	votes_by_cell = {}
+	totals_by_cell = {}
 	user_votes = {}
 	for row in rows:
 		cell_id = row['cell_id']
-		votes_by_cell.setdefault(cell_id, []).append({
-			'username': row['username'],
-			'ballots': row['ballots_spent'],
-			'color': USER_REGISTRY.get(row['username'], {}).get('color', '#ffffff'),
-		})
+		totals_by_cell[cell_id] = totals_by_cell.get(cell_id, 0) + row['ballots_spent']
+		if include_full_breakdown or row['username'] == username:
+			votes_by_cell.setdefault(cell_id, []).append({
+				'username': row['username'],
+				'ballots': row['ballots_spent'],
+				'color': USER_REGISTRY.get(row['username'], {}).get('color', '#ffffff'),
+			})
 		if row['username'] == username:
 			user_votes[cell_id] = row['ballots_spent']
-	return votes_by_cell, user_votes
+	return votes_by_cell, totals_by_cell, user_votes
 
 
 def _dashboard_cluster_maps():
@@ -206,9 +208,13 @@ def _build_dashboard_state(username):
 	reveal_mode = is_reveal_mode()
 	final_stage = is_final_stage_active()
 	show_results = is_admin or reveal_mode or final_stage
+	show_distribution = is_admin or final_stage
 	user_colors = {user: meta.get('color', '#c1c1c8') for user, meta in USER_REGISTRY.items()}
 	user_colors[ADMIN_USERNAME] = ADMIN_COLOR
-	votes_by_cell, user_votes = _dashboard_votes_for_user(username)
+	votes_by_cell, totals_by_cell, user_votes = _dashboard_votes_for_user(
+		username,
+		include_full_breakdown=show_distribution,
+	)
 	cluster_placements, cluster_cell_owner, cluster_cell_shape, cluster_cell_color = _dashboard_cluster_maps()
 	cluster_scores = {
 		user: score
@@ -229,11 +235,11 @@ def _build_dashboard_state(username):
 		for col_index in range(1, row_length + 1):
 			cell_id = f'R{row_index}C{col_index}'
 			votes_list = votes_by_cell.get(cell_id, [])
-			total_votes = sum(item['ballots'] for item in votes_list)
+			total_votes = totals_by_cell.get(cell_id, 0)
 			cluster_owner = cluster_cell_owner.get(cell_id)
 			pie_gradient = ''
 			display_votes_list = [item for item in votes_list if not (is_admin and item['username'] == 'example')]
-			if show_results and total_votes > 0 and not cluster_owner:
+			if show_distribution and show_results and total_votes > 0 and not cluster_owner:
 				current_pct = 0.0
 				gradient_parts = []
 				for item in display_votes_list:
@@ -245,7 +251,7 @@ def _build_dashboard_state(username):
 
 			cells[cell_id] = {
 				'total_votes': total_votes,
-				'votes_list': votes_list,
+				'votes_list': votes_list if is_admin else [],
 				'my_votes': user_votes.get(cell_id, 0),
 				'show_results': show_results,
 				'cluster_owner': cluster_owner,
@@ -279,9 +285,54 @@ def _build_dashboard_state(username):
 		'row_lengths': row_lengths,
 		'blocked_cells': blocked_cells,
 		'cells': cells,
-		'all_votes_data': votes_by_cell,
 		'user_votes': user_votes,
 		'user_colors': user_colors,
+	}
+
+
+def _evaluate_cluster_placement(shape_id, anchor, orientation):
+	cells = placement_cells(shape_id, anchor, orientation)
+	if len(cells) != 5:
+		return {'success': False, 'error': '放置無效'}
+
+	if any(is_cell_blocked(cell) for cell in cells):
+		return {'success': False, 'error': '放置與不可用格重疊'}
+
+	existing = get_cluster_placements()
+	occupied = {cell for placement in existing for cell in placement['cells']}
+	if any(cell in occupied for cell in cells):
+		return {'success': False, 'error': '放置與既有板塊重疊'}
+
+	with get_db() as conn:
+		placeholders = ','.join('?' for _ in cells)
+		rows = conn.execute(
+			f'SELECT username, SUM(ballots_spent) AS ballots FROM grid_votes WHERE cell_id IN ({placeholders}) GROUP BY username',
+			tuple(cells),
+		).fetchall()
+		ballots_per_user = {row['username']: row['ballots'] for row in rows}
+		total_ballots = sum(ballots_per_user.values())
+
+	if ballots_per_user:
+		max_ballots = max(ballots_per_user.values())
+		sorted_ballots = sorted(ballots_per_user.values(), reverse=True)
+		runner_up_ballots = sorted_ballots[1] if len(sorted_ballots) > 1 else 0
+		winners = [user for user, ballots in ballots_per_user.items() if ballots == max_ballots]
+	else:
+		winners = []
+		max_ballots = 0
+		runner_up_ballots = 0
+
+	winner = winners[0] if len(winners) == 1 and max_ballots > 0 else None
+	score_gain = total_ballots if winner else 0
+	win_margin = (max_ballots - runner_up_ballots) if winner else 0
+	return {
+		'success': True,
+		'cells': cells,
+		'total_ballots': total_ballots,
+		'winner': winner,
+		'score_gain': score_gain,
+		'win_margin': win_margin,
+		'is_tie': len(winners) > 1 and max_ballots > 0,
 	}
 
 
@@ -485,7 +536,7 @@ def api_vote():
 		).fetchone()
 
 	new_remaining = get_user_remaining_ballots(username)
-	_broadcast_dashboard_update('dashboard_update', {'reason': 'vote', 'username': username, 'cell_id': cell_id})
+	_broadcast_dashboard_update('dashboard_update', {'reason': 'vote'})
 
 	return jsonify({
 		'success': True,
@@ -556,7 +607,7 @@ def admin_start_final_stage():
 			'color': USER_REGISTRY.get(row['username'], {}).get('color', '#fff'),
 		})
 	save_admin_snapshot(snapshot)
-	_broadcast_dashboard_update('dashboard_update', {'reason': 'final_stage_started', 'placement_order': placement_order})
+	_broadcast_dashboard_update('dashboard_update', {'reason': 'final_stage_started'})
 
 	return jsonify({'success': True, 'placement_order': placement_order})
 
@@ -595,35 +646,13 @@ def api_place_cluster():
 	if shape_id in used_shapes:
 		return jsonify({'success': False, 'error': '此板塊已使用'}), 400
 
-	cells = placement_cells(shape_id, anchor, orientation)
-	if len(cells) != 5:
-		return jsonify({'success': False, 'error': '放置無效'}), 400
+	evaluation = _evaluate_cluster_placement(shape_id, anchor, orientation)
+	if not evaluation.get('success'):
+		return jsonify({'success': False, 'error': evaluation.get('error', '放置無效')}), 400
 
-	if any(is_cell_blocked(cell) for cell in cells):
-		return jsonify({'success': False, 'error': '放置與不可用格重疊'}), 400
-
-	existing = get_cluster_placements()
-	occupied = {cell for placement in existing for cell in placement['cells']}
-	if any(cell in occupied for cell in cells):
-		return jsonify({'success': False, 'error': '放置與既有板塊重疊'}), 400
-
-	with get_db() as conn:
-		placeholders = ','.join('?' for _ in cells)
-		rows = conn.execute(
-			f'SELECT username, SUM(ballots_spent) AS ballots FROM grid_votes WHERE cell_id IN ({placeholders}) GROUP BY username',
-			tuple(cells),
-		).fetchall()
-		ballots_per_user = {row['username']: row['ballots'] for row in rows}
-		total_ballots = sum(ballots_per_user.values())
-
-	if ballots_per_user:
-		max_ballots = max(ballots_per_user.values())
-		winners = [user for user, ballots in ballots_per_user.items() if ballots == max_ballots]
-	else:
-		winners = []
-		max_ballots = 0
-
-	winner = winners[0] if len(winners) == 1 and max_ballots > 0 else None
+	cells = evaluation['cells']
+	total_ballots = evaluation['total_ballots']
+	winner = evaluation['winner']
 	if winner:
 		add_cluster_score(winner, total_ballots)
 
@@ -633,9 +662,6 @@ def api_place_cluster():
 	_enforce_final_stage_turn_progress()
 	_broadcast_dashboard_update('dashboard_update', {
 		'reason': 'cluster_placed',
-		'username': username,
-		'shape_id': shape_id,
-		'next_user': next_user,
 	})
 
 	return jsonify({
@@ -644,6 +670,46 @@ def api_place_cluster():
 		'winner': winner,
 		'cluster_cells': cells,
 		'total_ballots': total_ballots,
+	})
+
+
+@main_bp.route('/api/cluster_preview', methods=['POST'])
+def api_cluster_preview():
+	if 'username' not in session or session['username'] == ADMIN_USERNAME:
+		return jsonify({'success': False, 'error': '未授權'}), 401
+
+	username = session['username']
+	if _is_example_user(username):
+		return jsonify({'success': False, 'error': '範例帳號不可預覽'}), 400
+
+	if not is_final_stage_active():
+		return jsonify({'success': False, 'error': '最終階段尚未開始'}), 400
+
+	_enforce_final_stage_turn_progress()
+	current_user = get_current_placement_user()
+	if username != current_user:
+		return jsonify({'success': False, 'error': '尚未輪到你'}), 400
+
+	data = request.json or {}
+	shape_id = data.get('shape_id')
+	anchor = data.get('anchor')
+	orientation = int(data.get('orientation', 0))
+
+	used_shapes = get_user_used_shape_ids(username)
+	if shape_id in used_shapes:
+		return jsonify({'success': False, 'error': '此板塊已使用'}), 400
+
+	evaluation = _evaluate_cluster_placement(shape_id, anchor, orientation)
+	if not evaluation.get('success'):
+		return jsonify({'success': False, 'error': evaluation.get('error', '放置無效')}), 400
+
+	return jsonify({
+		'success': True,
+		'winner': evaluation['winner'],
+		'total_ballots': evaluation['total_ballots'],
+		'score_gain': evaluation['score_gain'],
+		'win_margin': evaluation['win_margin'],
+		'is_tie': evaluation['is_tie'],
 	})
 
 
