@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Coconut Voting Room — Dashboard{% endblock %}
+{% block title %}椰子投票室 — 使用者儀表板{% endblock %}
 
 {% block head_extra %}
 <style>
@@ -70,6 +70,13 @@
         text-align: center;
     }
 
+    .cluster-confirm-result-line {
+        width: 100%;
+        color: #e7e7ef;
+        font-size: 13px;
+        text-align: left;
+    }
+
     .cluster-confirm-actions {
         display: flex;
         justify-content: flex-end;
@@ -95,33 +102,184 @@
         background: #04d361;
         color: #07110b;
     }
+
+    .turn-timer-line {
+        margin-top: 10px;
+        font-size: 20px;
+        color: #f8fbff;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        text-shadow: 0 0 14px rgba(255, 255, 255, 0.28);
+    }
+
+    .turn-timer-value {
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: 900;
+    }
+
+    .turn-timer-limit {
+        color: #d7dee9;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .user-score-line {
+        margin-top: 12px;
+        font-size: 22px;
+        color: #eef4ff;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+    }
+
+    .user-score-value {
+        font-size: 30px;
+        color: #ffffff;
+        font-weight: 900;
+        text-shadow: 0 0 14px rgba(255, 255, 255, 0.24);
+    }
+
+    .play-layout {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .play-layout-clusters {
+        width: min(236px, 28vw);
+        flex: 0 0 min(236px, 28vw);
+        padding-top: 24px;
+    }
+
+    .play-layout-grid {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .play-layout-clusters .cluster-palette {
+        margin-top: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(4, minmax(0, auto));
+        gap: 8px;
+        justify-items: center;
+        align-items: start;
+        align-content: start;
+    }
+
+    .play-layout-clusters .cluster-card {
+        width: 100%;
+        max-width: 68px;
+        min-height: 82px;
+        padding: 6px;
+        border-radius: 10px;
+        gap: 4px;
+        box-sizing: border-box;
+    }
+
+    .play-layout-clusters .cluster-preview {
+        width: 60px;
+        height: 46px;
+    }
+
+    .play-layout-clusters .cluster-name {
+        font-size: 11px;
+    }
+
+    .play-layout-clusters .cluster-orientation {
+        font-size: 10px;
+    }
+
+    .play-layout-grid .grid-container {
+        padding: 24px 0 18px;
+    }
+
+    .play-layout-grid .hex-row {
+        margin-top: -11px;
+    }
+
+    .play-layout-grid .hex {
+        width: 40px;
+        height: 46px;
+        margin-right: 3px;
+        font-size: 9px;
+    }
+
+    .play-layout-grid .hex span.total {
+        font-size: 11px;
+    }
+
+    .play-layout-grid .hex span.user-spent {
+        font-size: 8px;
+    }
+
+    .play-layout-grid .hex:hover {
+        transform: scale(1.03);
+    }
+
+    @media (max-width: 900px) {
+        .play-layout {
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .play-layout-clusters {
+            width: 100%;
+            flex: 1 1 auto;
+            padding-top: 0;
+        }
+
+        .play-layout-clusters .cluster-palette {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-rows: auto;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .play-layout-clusters .cluster-palette {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .play-layout-grid .hex {
+            width: 36px;
+            height: 41px;
+            margin-right: 2px;
+            font-size: 8px;
+        }
+
+        .play-layout-grid .hex-row {
+            margin-top: -9px;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-    <h1>⬡ Coconut Voting Room ⬡</h1>
+    <h1>⬡ 椰子投票室 ⬡</h1>
     <div class="box">
-        <p id="user-summary-line">Welcome, <strong>{{ username }}</strong>! | Ballots Remaining: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="{{ url_for('main.logout') }}" class="logout-link">Exit</a></p>
+        <p id="user-summary-line">歡迎！<strong>{{ username }}</strong> | 剩餘猴子數: <strong id="ballot-counter" style="color: #04d361; font-size: 20px;">{{ remaining }}</strong> <a href="{{ url_for('main.logout') }}" class="logout-link">登出</a></p>
         <div id="user-status-section">
             {% if final_stage %}
                 {% if current_turn == username %}
-                    <p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>
+                    <p class="turn-hint">輪到你了！</p>
                 {% else %}
-                    <p class="waiting-hint">⏳ Final stage active. Waiting for <strong>{{ current_turn }}</strong> to place the next cluster.</p>
+                    <p class="waiting-hint">最終階段進行中。等待 <strong>{{ current_turn }}</strong> 放置板塊。</p>
                 {% endif %}
-                <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">
-                    Your score: <strong>{{ cluster_scores.get(username, 0) }}</strong>
+                <p class="user-score-line">
+                    你的分數：<strong class="user-score-value">{{ cluster_scores.get(username, 0) }}</strong>
                 </p>
                 <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">
-                    Scores: {% for score_user, score in cluster_scores.items() %}{{ score_user }}: {{ score }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    分數: {% for score_user, score in cluster_scores.items() %}{{ score_user }}: {{ score }}{% if not loop.last %}, {% endif %}{% endfor %}
                 </p>
                 {% if current_turn == username %}
-                    <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>
+                    <p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">已選板塊：<strong id="selected-shape">無</strong>。</p>
                 {% endif %}
             {% else %}
-                <p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p>
-                <p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Cluster tiles are visible for preview, but placement unlocks only after the admin starts the final stage.</p>
-                <p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Drag vote tokens (-1, +5, -5, +10, -10) onto any available grid for batch changes.</p>
+                <p style="font-size: 13px; color: #8d8d99; margin: 0;">點擊以放上猴子，長按以移除本輪放上的所有猴子</p>
+                <p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">可參考板塊預覽圖，板塊點兩下可以旋轉，但本階段尚不可放置。</p>
+                <p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">（-1、+5、-5、+10、-10）拖至網格上可以進行批量更改。</p>
             {% endif %}
         </div>
     </div>
@@ -136,70 +294,76 @@
         </div>
     </div>
 
-    <div class="grid-container">
-        <div class="hex-grid">
-            {% for r in range(1, row_lengths|length + 1) %}
-            <div class="hex-row">
-                {% set count = row_lengths[r-1] %}
-                {% for c in range(1, count + 1) %}
-                    {% set cell_id = "R" ~ r ~ "C" ~ c %}
-                    {% set cell_state = cells.get(cell_id, {}) %}
-                    {% set votes_list = cell_state.get('votes_list', []) %}
-                    {% set total_votes = cell_state.get('total_votes', 0) %}
-                    {% set my_votes = cell_state.get('my_votes', 0) %}
-                    {% set show_results = cell_state.get('show_results', false) %}
-                    {% set cluster_owner = cell_state.get('cluster_owner') %}
-                    {% set cluster_color = cell_state.get('cluster_color') %}
-                    {% set pie_gradient = cell_state.get('pie_gradient', '') %}
-                    <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %} {% if cell_id in blocked_cells %}blocked{% endif %}"
-                         id="{{ cell_id }}"
-                         data-cell="{{ cell_id }}"
-                        style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}{% if cluster_owner %}background: #ffffff;{% elif show_results and pie_gradient %}background: {{ pie_gradient }};{% endif %}">
-
-                        <div class="hex-content">
-                            <span class="total" id="total-{{ cell_id }}">
-                                {{ total_votes if show_results else '' }}
-                            </span>
-
-                            <span class="user-spent" id="user-{{ cell_id }}"
-                                  style="display:{% if my_votes > 0 %}inline{% else %}none{% endif %};">
-                                +{{ my_votes }}
-                            </span>
+    <div class="play-layout">
+        <div class="play-layout-clusters">
+            <div id="cluster-palette-wrapper" style="display: {% if final_stage or username == 'example' %}block{% else %}none{% endif %};">
+                <div class="cluster-palette" id="cluster-palette">
+                    {% for shape in shape_catalog %}
+                        <div class="cluster-card {% if shape.id in used_shapes %}used{% endif %}"
+                             draggable="{{ 'false' if shape.id in used_shapes else 'true' }}"
+                             data-shape-id="{{ shape.id }}"
+                             data-orientation="0"
+                             data-coords='{{ shape.coords|tojson }}'>
+                            <div class="cluster-preview"></div>
+                            <div class="cluster-name">{{ shape.id }}{% if shape.id in used_shapes %} (used){% endif %}</div>
+                            <div class="cluster-orientation">雙擊可旋轉</div>
                         </div>
-                    </div>
-                {% endfor %}
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <div id="cluster-palette-wrapper" style="display: {% if final_stage or username == 'example' %}block{% else %}none{% endif %};">
-        <div class="cluster-palette" id="cluster-palette">
-            {% for shape in shape_catalog %}
-                <div class="cluster-card {% if shape.id in used_shapes %}used{% endif %}"
-                     draggable="{{ 'false' if shape.id in used_shapes else 'true' }}"
-                     data-shape-id="{{ shape.id }}"
-                     data-orientation="0"
-                     data-coords='{{ shape.coords|tojson }}'>
-                    <div class="cluster-preview"></div>
-                    <div class="cluster-name">{{ shape.id }}{% if shape.id in used_shapes %} (used){% endif %}</div>
-                    <div class="cluster-orientation">Rotation: 0</div>
+                    {% endfor %}
                 </div>
-            {% endfor %}
+            </div>
+        </div>
+
+        <div class="play-layout-grid">
+            <div class="grid-container">
+                <div class="hex-grid">
+                    {% for r in range(1, row_lengths|length + 1) %}
+                    <div class="hex-row">
+                        {% set count = row_lengths[r-1] %}
+                        {% for c in range(1, count + 1) %}
+                            {% set cell_id = "R" ~ r ~ "C" ~ c %}
+                            {% set cell_state = cells.get(cell_id, {}) %}
+                            {% set votes_list = cell_state.get('votes_list', []) %}
+                            {% set total_votes = cell_state.get('total_votes', 0) %}
+                            {% set my_votes = cell_state.get('my_votes', 0) %}
+                            {% set show_results = cell_state.get('show_results', false) %}
+                            {% set cluster_owner = cell_state.get('cluster_owner') %}
+                            {% set cluster_color = cell_state.get('cluster_color') %}
+                            {% set pie_gradient = cell_state.get('pie_gradient', '') %}
+                            <div class="hex {% if my_votes > 0 %}user-voted{% endif %} {% if cluster_owner %}cluster-member{% endif %} {% if cell_id in blocked_cells %}blocked{% endif %}"
+                                 id="{{ cell_id }}"
+                                 data-cell="{{ cell_id }}"
+                                style="{% if user_color is defined %}--user-color: {{ user_color }};{% endif %}{% if cluster_owner %}background: #ffffff;{% elif show_results and pie_gradient %}background: {{ pie_gradient }};{% endif %}">
+
+                                <div class="hex-content">
+                                    <span class="total" id="total-{{ cell_id }}">
+                                        {{ total_votes if show_results else '' }}
+                                    </span>
+
+                                    <span class="user-spent" id="user-{{ cell_id }}"
+                                          style="display:{% if my_votes > 0 %}inline{% else %}none{% endif %};">
+                                        +{{ my_votes }}
+                                    </span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
 
     <div class="cluster-confirm-overlay" id="cluster-confirm-overlay" aria-hidden="true">
         <div class="cluster-confirm-window" role="dialog" aria-modal="true" aria-labelledby="cluster-confirm-title">
-            <h2 class="cluster-confirm-title" id="cluster-confirm-title">Review cluster placement</h2>
+            <h2 class="cluster-confirm-title" id="cluster-confirm-title">確認板塊放置</h2>
             <p class="cluster-confirm-meta" id="cluster-confirm-meta"></p>
             <div class="cluster-confirm-preview">
-                <div style="font-size: 12px; color: #8d8d99; text-transform: uppercase; letter-spacing: .08em;">Covered grids</div>
+                <div style="font-size: 12px; color: #8d8d99; text-transform: uppercase; letter-spacing: .08em;">放置結果</div>
                 <div class="cluster-confirm-cells" id="cluster-confirm-cells"></div>
             </div>
             <div class="cluster-confirm-actions">
-                <button class="cluster-confirm-btn cancel" type="button" id="cluster-confirm-cancel">Cancel</button>
-                <button class="cluster-confirm-btn confirm" type="button" id="cluster-confirm-submit">Place Cluster</button>
+                <button class="cluster-confirm-btn cancel" type="button" id="cluster-confirm-cancel">取消</button>
+                <button class="cluster-confirm-btn confirm" type="button" id="cluster-confirm-submit">放置板塊</button>
             </div>
         </div>
     </div>
@@ -222,6 +386,8 @@
             isUserTurn: {{ (current_turn == username)|tojson }},
             remaining: {{ remaining|tojson }},
             currentTurn: {{ current_turn|tojson }},
+            turnSecondsRemaining: {{ turn_seconds_remaining|tojson }},
+            turnTimeLimitSeconds: {{ turn_time_limit_seconds|tojson }},
             clusterScores: {{ cluster_scores|tojson }},
             usedShapes: new Set({{ used_shapes|tojson }}),
             rowLengths: {{ row_lengths|tojson }},
@@ -241,6 +407,7 @@
         let currentVoteDrag = null;
         let votePreviewCell = null;
         let pendingClusterPlacement = null;
+        let finalStageTicker = null;
 
         function rotateLeft(coord) {
             return [coord[0] + coord[1], -coord[0]];
@@ -258,33 +425,45 @@
             const svgNS = 'http://www.w3.org/2000/svg';
             const SQRT3 = Math.sqrt(3);
             const rotated = rotateCoords(coords, orientation);
-            const projected = rotated.map(([q, r]) => ({ x: q * SQRT3 + r * SQRT3 / 2, y: r * 1.5 }));
-            const xs = projected.map(p => p.x);
-            const ys = projected.map(p => p.y);
-            const minX = Math.min(...xs);
-            const minY = Math.min(...ys);
-            const maxX = Math.max(...xs);
-            const maxY = Math.max(...ys);
-            const containerWidth = 90;
-            const containerHeight = 72;
-            const padding = 6;
-            const baseHexSize = 8;
-            const width = maxX - minX || 1;
-            const height = maxY - minY || 1;
-            const maxWidthPx = containerWidth - padding * 2 - baseHexSize * 2;
-            const maxHeightPx = containerHeight - padding * 2 - baseHexSize * 2;
-            const scale = Math.min(maxWidthPx / (width * baseHexSize), maxHeightPx / (height * baseHexSize), 1);
-            const hexSize = Math.max(3, baseHexSize * scale);
-            const offsetX = padding + baseHexSize + Math.max(0, ((maxWidthPx - width * baseHexSize * scale) / 2));
-            const offsetY = padding + baseHexSize + Math.max(0, ((maxHeightPx - height * baseHexSize * scale) / 2));
+            const containerWidth = container.clientWidth || 60;
+            const containerHeight = container.clientHeight || 46;
+            const padding = 3;
+
+            if (!rotated.length) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const centers = rotated.map(([q, r]) => ({ x: q * SQRT3 + r * SQRT3 / 2, y: r * 1.5 }));
+            const cornerAngleDeg = [-30, 30, 90, 150, 210, 270];
+            const corners = [];
+            centers.forEach(center => {
+                cornerAngleDeg.forEach(angleDeg => {
+                    const angle = angleDeg * Math.PI / 180;
+                    corners.push({ x: center.x + Math.cos(angle), y: center.y + Math.sin(angle) });
+                });
+            });
+
+            const minX = Math.min(...corners.map(point => point.x));
+            const maxX = Math.max(...corners.map(point => point.x));
+            const minY = Math.min(...corners.map(point => point.y));
+            const maxY = Math.max(...corners.map(point => point.y));
+            const width = Math.max(maxX - minX, 1);
+            const height = Math.max(maxY - minY, 1);
+            const availableWidth = Math.max(containerWidth - padding * 2, 1);
+            const availableHeight = Math.max(containerHeight - padding * 2, 1);
+            const scale = Math.max(2, Math.min(availableWidth / width, availableHeight / height));
+            const hexSize = scale;
+            const offsetX = (containerWidth - width * scale) / 2 - minX * scale;
+            const offsetY = (containerHeight - height * scale) / 2 - minY * scale;
+
             const svg = document.createElementNS(svgNS, 'svg');
             svg.setAttribute('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
             svg.setAttribute('xmlns', svgNS);
             container.innerHTML = '';
-            rotated.forEach(coord => {
-                const proj = { x: coord[0] * SQRT3 + coord[1] * SQRT3 / 2, y: coord[1] * 1.5 };
-                const x = (proj.x - minX) * baseHexSize * scale + offsetX;
-                const y = (proj.y - minY) * baseHexSize * scale + offsetY;
+            centers.forEach(center => {
+                const x = center.x * scale + offsetX;
+                const y = center.y * scale + offsetY;
                 const points = [];
                 for (let i = 0; i < 6; i++) {
                     const angle = Math.PI / 180 * (60 * i - 30);
@@ -328,6 +507,36 @@
             return rotated.map(([dx, dy]) => axialToCellId(anchor.x + dx, anchor.y + dy)).filter(Boolean);
         }
 
+        function getPlacementOutcome(cells) {
+            const ballotsPerUser = {};
+            cells.forEach(cellId => {
+                const cellState = dashboardState.cells[cellId] || {};
+                const votes = cellState.votes_list || [];
+                votes.forEach(({ username, ballots }) => {
+                    ballotsPerUser[username] = (ballotsPerUser[username] || 0) + (Number(ballots) || 0);
+                });
+            });
+
+            const entries = Object.entries(ballotsPerUser);
+            const totalBallots = entries.reduce((acc, [, ballots]) => acc + ballots, 0);
+            if (!entries.length) {
+                return { winner: null, scoreGain: 0, maxBallots: 0, tiedUsers: [] };
+            }
+
+            const maxBallots = Math.max(...entries.map(([, ballots]) => ballots));
+            const tiedUsers = entries
+                .filter(([, ballots]) => ballots === maxBallots)
+                .map(([username]) => username);
+
+            const winner = (tiedUsers.length === 1 && maxBallots > 0) ? tiedUsers[0] : null;
+            return {
+                winner,
+                scoreGain: winner ? totalBallots : 0,
+                maxBallots,
+                tiedUsers,
+            };
+        }
+
         function clearDragPreview() {
             highlightedCells.forEach(cellId => {
                 const cellEl = document.getElementById(cellId);
@@ -366,10 +575,29 @@
             const cells = shape ? getPlacementCells(shape.coords, anchor, orientation) : [];
             pendingClusterPlacement = { shapeId, anchor, orientation, cells };
 
-            meta.textContent = `Shape ${shapeId} at ${anchor} with rotation ${orientation}. Check the covered cells below before confirming.`;
-            cellsContainer.innerHTML = cells.length
-                ? cells.map(cellId => `<span class="cluster-confirm-cell">${cellId}</span>`).join('')
-                : '<span style="color:#f75a68; font-size: 13px;">This placement is invalid or would extend outside the board.</span>';
+            meta.textContent = `板塊 ${shapeId}。`;
+            if (!shape || cells.length !== 5) {
+                cellsContainer.innerHTML = '<span style="color:#f75a68; font-size: 13px;">此放置無效，或超出棋盤範圍。</span>';
+            } else {
+                const outcome = getPlacementOutcome(cells);
+                let winnerLine = '';
+                let scoreLine = '';
+                if (outcome.winner) {
+                    winnerLine = `獲勝者：<strong>${outcome.winner}</strong>`;
+                    scoreLine = `得分增加：<strong>+${outcome.scoreGain}</strong>`;
+                } else if (outcome.maxBallots > 0) {
+                    winnerLine = `獲勝者：<strong>無（平手）</strong>`;
+                    scoreLine = '得分增加：<strong>+0</strong>';
+                } else {
+                    winnerLine = '獲勝者：<strong>無（無票數）</strong>';
+                    scoreLine = '得分增加：<strong>+0</strong>';
+                }
+
+                cellsContainer.innerHTML = `
+                    <div class="cluster-confirm-result-line">${winnerLine}</div>
+                    <div class="cluster-confirm-result-line">${scoreLine}</div>
+                `;
+            }
 
             overlay.classList.add('visible');
             overlay.setAttribute('aria-hidden', 'false');
@@ -379,14 +607,14 @@
             if (!pendingClusterPlacement) return;
             const { shapeId, anchor, orientation } = pendingClusterPlacement;
             closeClusterConfirmModal();
-            placeCluster(shapeId, anchor, orientation);
+            placeCluster(shapeId, anchor, orientation, true);
         }
 
         function clearAnchorSelection() {
             document.querySelectorAll('.hex.selected-anchor').forEach(el => el.classList.remove('selected-anchor'));
             selectedAnchor = null;
             const selectedAnchorLabel = document.getElementById('selected-anchor');
-            if (selectedAnchorLabel) selectedAnchorLabel.textContent = 'none';
+            if (selectedAnchorLabel) selectedAnchorLabel.textContent = '無';
         }
 
         function updatePlaceButtonState() {
@@ -420,7 +648,7 @@
                     nameEl.textContent = isUsed ? `${shapeId} (used)` : shapeId;
                 }
                 if (orientationLabel) {
-                    orientationLabel.textContent = `Rotation: ${orientation}`;
+                    orientationLabel.textContent = '雙擊可旋轉';
                 }
 
                 if (card.dataset.bound === 'true') {
@@ -451,7 +679,7 @@
                         const selectedRotationLabel = document.getElementById('selected-rotation');
                         if (selectedRotationLabel) selectedRotationLabel.textContent = orientation;
                     }
-                    if (orientationLabel) orientationLabel.innerText = `Rotation: ${orientation}`;
+                    if (orientationLabel) orientationLabel.innerText = '雙擊可旋轉';
                     renderShapePreview(preview, coords, orientation);
                 });
 
@@ -665,7 +893,7 @@
                 hexElement.addEventListener('click', () => {
                     if (!canPlaceClusters() || !dashboardState.isUserTurn || !selectedShape || hexElement.classList.contains('blocked')) return;
                     clearDragPreview();
-                    openClusterConfirmModal(selectedShape.shapeId, hexElement.dataset.cell, selectedShape.orientation);
+                    placeCluster(selectedShape.shapeId, hexElement.dataset.cell, selectedShape.orientation);
                 });
 
                 hexElement.addEventListener('drop', e => {
@@ -691,7 +919,7 @@
                     if (!payload) return;
                     const shapeId = payload.shapeId || payload.shape_id;
                     const orientation = (payload.orientation != null) ? payload.orientation : 0;
-                    openClusterConfirmModal(shapeId, hexElement.dataset.cell, orientation);
+                    placeCluster(shapeId, hexElement.dataset.cell, orientation);
                     currentDragData = null;
                 });
             });
@@ -712,24 +940,28 @@
                 });
                 const scoreSummary = scoreEntries.map(([user, score]) => `${user}: ${score}`).join(', ');
                 const turnMessage = state.isExampleUser
-                    ? '<p class="waiting-hint">🧪 Example account active. Cluster placements are accepted but have no effect on the game.</p>'
+                    ? '<p class="waiting-hint">🧪 範例帳號已啟用。可放置板塊，但不會影響遊戲結果。</p>'
                     : state.isUserTurn
-                    ? '<p class="turn-hint">🎯 It’s your turn! Select a cluster tile, then click a grid hex to place it. Double-click a shape to rotate it before placement.</p>'
-                    : `<p class="waiting-hint">⏳ Final stage active. Waiting for <strong>${state.currentTurn || 'the next player'}</strong> to place the next cluster.</p>`;
+                    ? '<p class="turn-hint">🎯 輪到你了！拖曳板塊至網格上以確認該板塊贏家並放置；雙擊板塊可旋轉。</p>'
+                    : `<p class="waiting-hint">⏳ 最終階段進行中。等待 <strong>${state.currentTurn || '下一位玩家'}</strong> 放置板塊。</p>`;
                 const selectedInfo = (state.isUserTurn || state.isExampleUser)
-                    ? '<p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">Selected cluster: <strong id="selected-shape">none</strong>, rotation: <strong id="selected-rotation">0</strong>.</p>'
+                    ? '<p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">已選板塊：<strong id="selected-shape">無</strong>。</p>'
+                    : '';
+                const timerLine = state.isUserTurn
+                    ? `<p class="turn-timer-line">本回合剩餘時間：<span class="turn-timer-value">${Number.isFinite(state.turnSecondsRemaining) ? state.turnSecondsRemaining : 0} 秒</span> <span class="turn-timer-limit">/ ${state.turnTimeLimitSeconds || 0} 秒</span></p>`
                     : '';
 
                 statusSection.innerHTML = `
                     ${turnMessage}
-                    <p style="margin-top: 12px; font-size: 13px; color: #c1c1c8;">Your score: <strong>${(state.clusterScores || {})[state.currentUser] || 0}</strong></p>
-                    <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">Scores: ${scoreSummary}</p>
+                    ${timerLine}
+                    <p class="user-score-line">你的分數：<strong class="user-score-value">${(state.clusterScores || {})[state.currentUser] || 0}</strong></p>
+                    <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">分數：${scoreSummary}</p>
                     ${selectedInfo}
                 `;
                 return;
             }
 
-            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>Left-Click / Tap</strong> to spend a ballot. <strong>Hold Click (0.8s)</strong> to wipe newly added votes here; fixed ballots cannot be reclaimed.</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">' + (dashboardState.isExampleUser ? 'Example account can preview and place cluster tiles anytime, but those placements do not affect the game.' : 'Cluster tiles are visible for preview, but placement unlocks only after the admin starts the final stage.') + '</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">Drag vote tokens (-1, +5, -5, +10, -10) onto any available grid for batch changes.</p>';
+            statusSection.innerHTML = '<p style="font-size: 13px; color: #8d8d99; margin: 0;">💡 <strong>點擊</strong>可放置猴子；<strong>長按</strong>可清除本輪新增猴子。</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">' + (dashboardState.isExampleUser ? '範例帳號可隨時預覽與放置板塊，但不會影響遊戲結果。' : '可預覽或<strong>點兩下</strong>旋轉板塊，但須等待最終階段後才可正式放置。') + '</p><p style="margin-top: 8px; font-size: 13px; color: #8d8d99;">將（-1、+5、-5、+10、-10）拖曳到網格可調整批量猴子。</p>';
         }
 
         function updateCells(state) {
@@ -763,6 +995,8 @@
             dashboardState.isExampleUser = !!state.is_example_user;
             dashboardState.remaining = state.remaining;
             dashboardState.currentTurn = state.current_turn;
+            dashboardState.turnSecondsRemaining = state.turn_seconds_remaining;
+            dashboardState.turnTimeLimitSeconds = state.turn_time_limit_seconds;
             dashboardState.clusterScores = state.cluster_scores || {};
             dashboardState.usedShapes = new Set(state.used_shapes || []);
             dashboardState.cells = state.cells || {};
@@ -776,6 +1010,7 @@
             renderClusterPalette();
             renderVoteTokens();
             updateCells(dashboardState);
+            ensureFinalStageTicker();
 
             if (!dashboardState.isUserTurn && !dashboardState.isExampleUser) {
                 selectedShape = null;
@@ -799,7 +1034,7 @@
                     applyDashboardState(data.state);
                 }
             } catch (error) {
-                console.error('Dashboard refresh failed', error);
+                console.error('儀表板更新失敗', error);
             } finally {
                 refreshInFlight = false;
                 if (refreshRequested) {
@@ -819,11 +1054,28 @@
             };
         }
 
-        function placeCluster(shapeId, anchor, orientation) {
+        function ensureFinalStageTicker() {
+            if (finalStageTicker) {
+                clearInterval(finalStageTicker);
+                finalStageTicker = null;
+            }
+            if (!dashboardState.finalStage) return;
+            finalStageTicker = setInterval(() => {
+                refreshDashboardState();
+            }, 1000);
+        }
+
+        function placeCluster(shapeId, anchor, orientation, confirmed = false) {
             if (!shapeId || !anchor) {
-                alert('Cluster and anchor are required to place a cluster.');
+                alert('放置板塊需要板塊類型與錨點座標。');
                 return;
             }
+
+            if (!confirmed) {
+                openClusterConfirmModal(shapeId, anchor, orientation);
+                return;
+            }
+
             fetch(placeClusterUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -838,12 +1090,12 @@
                     document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
                     refreshDashboardState();
                 } else {
-                    alert(data.error || 'Could not place cluster.');
+                    alert(data.error || '無法放置板塊。');
                 }
             })
             .catch(err => {
-                console.error('Place cluster failed', err);
-                alert('Cluster placement failed.');
+                console.error('放置板塊失敗', err);
+                alert('放置板塊失敗。');
             });
         }
 
@@ -878,7 +1130,7 @@
                     alert(data.error);
                 }
             })
-            .catch(err => console.error('Communication error:', err));
+            .catch(err => console.error('通訊錯誤：', err));
         }
 
         renderClusterPalette();

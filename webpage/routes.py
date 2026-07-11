@@ -1,13 +1,16 @@
 import json
+import math
 import queue
 import threading
+import time
 
 from flask import Blueprint, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
 
-from config import ADMIN_COLOR, ADMIN_PASSWORD, ADMIN_USERNAME, MAX_BALLOTS_PER_CELL_PER_USER, TOTAL_ALLOWANCE, USER_REGISTRY, get_active_user_registry
+from config import ADMIN_COLOR, ADMIN_PASSWORD, ADMIN_USERNAME, FINAL_STAGE_TURN_SECONDS, MAX_BALLOTS_PER_CELL_PER_USER, TOTAL_ALLOWANCE, USER_REGISTRY, get_active_user_registry
 from db import (
 	add_cluster_score,
 	advance_placement_turn,
+	increment_voting_round,
 	fetch_ballot_votes,
 	get_admin_snapshot,
 	get_cluster_placements,
@@ -16,10 +19,13 @@ from db import (
 	get_db,
 	get_locked_ballots,
 	get_placement_order,
+	get_turn_deadline_epoch,
 	get_user_remaining_ballots,
 	get_user_used_shape_ids,
+	get_voting_round,
 	is_final_stage_active,
 	is_reveal_mode,
+	set_turn_deadline_epoch,
 	save_admin_snapshot,
 	save_cluster_placement,
 	snapshot_locked_votes,
@@ -34,6 +40,113 @@ _dashboard_lock = threading.Lock()
 _dashboard_revision = 0
 
 
+def _board_cell_ids():
+	cell_ids = []
+	for r, row_len in enumerate(get_row_lengths(), start=1):
+		for c in range(1, row_len + 1):
+			cell_ids.append(f'R{r}C{c}')
+	return cell_ids
+
+
+def _user_has_any_valid_cluster_placement(username):
+	if not username or _is_example_user(username):
+		return False
+
+	used_shapes = set(get_user_used_shape_ids(username))
+	available_shapes = [shape['id'] for shape in SHAPE_CATALOG if shape['id'] not in used_shapes]
+	if not available_shapes:
+		return False
+
+	placements = get_cluster_placements()
+	occupied = {cell for placement in placements for cell in placement['cells']}
+	blocked = get_blocked_cells()
+	anchor_cells = [cell_id for cell_id in _board_cell_ids() if cell_id not in blocked and cell_id not in occupied]
+	if not anchor_cells:
+		return False
+
+	for shape_id in available_shapes:
+		for orientation in range(6):
+			for anchor in anchor_cells:
+				cells = placement_cells(shape_id, anchor, orientation)
+				if len(cells) != 5:
+					continue
+				if any(cell in blocked or cell in occupied for cell in cells):
+					continue
+				return True
+
+	return False
+
+
+def _set_current_turn_deadline():
+	current_user = get_current_placement_user()
+	if not current_user:
+		set_turn_deadline_epoch(0)
+		return 0.0
+	deadline = time.time() + max(1, int(FINAL_STAGE_TURN_SECONDS))
+	set_turn_deadline_epoch(deadline)
+	return deadline
+
+
+def _enforce_final_stage_turn_progress():
+	if not is_final_stage_active():
+		return
+
+	order = get_placement_order()
+	if not order:
+		set_turn_deadline_epoch(0)
+		return
+
+	max_hops = len(order)
+	hops = 0
+	while hops < max_hops:
+		hops += 1
+		current_user = get_current_placement_user()
+		if not current_user:
+			set_turn_deadline_epoch(0)
+			return
+
+		if _is_example_user(current_user):
+			next_user = advance_placement_turn()
+			_set_current_turn_deadline()
+			_broadcast_dashboard_update('dashboard_update', {
+				'reason': 'turn_skipped_example',
+				'skipped_user': current_user,
+				'next_user': next_user,
+			})
+			continue
+
+		if not _user_has_any_valid_cluster_placement(current_user):
+			next_user = advance_placement_turn()
+			_set_current_turn_deadline()
+			_broadcast_dashboard_update('dashboard_update', {
+				'reason': 'turn_skipped_no_valid_placement',
+				'skipped_user': current_user,
+				'next_user': next_user,
+			})
+			continue
+
+		deadline = get_turn_deadline_epoch()
+		now = time.time()
+		if deadline <= 0:
+			_set_current_turn_deadline()
+			return
+
+		if now >= deadline:
+			next_user = advance_placement_turn()
+			_set_current_turn_deadline()
+			_broadcast_dashboard_update('dashboard_update', {
+				'reason': 'turn_timed_out',
+				'skipped_user': current_user,
+				'next_user': next_user,
+			})
+			continue
+
+		return
+
+	# All users in the loop were skipped; avoid an infinite skip cycle.
+	set_turn_deadline_epoch(0)
+
+
 def _is_example_user(username):
 	return username == 'example'
 
@@ -44,6 +157,11 @@ def _group_sort_key(username):
 	if username.startswith('group') and username[5:].isdigit():
 		return (0, int(username[5:]))
 	return (1, username)
+
+
+def _current_per_cell_cap():
+	round_number = get_voting_round()
+	return MAX_BALLOTS_PER_CELL_PER_USER + (round_number - 1) * 5
 
 
 def _dashboard_votes_for_user(username):
@@ -83,10 +201,13 @@ def _dashboard_cluster_maps():
 
 
 def _build_dashboard_state(username):
+	_enforce_final_stage_turn_progress()
 	is_admin = username == ADMIN_USERNAME
 	reveal_mode = is_reveal_mode()
 	final_stage = is_final_stage_active()
 	show_results = is_admin or reveal_mode or final_stage
+	user_colors = {user: meta.get('color', '#c1c1c8') for user, meta in USER_REGISTRY.items()}
+	user_colors[ADMIN_USERNAME] = ADMIN_COLOR
 	votes_by_cell, user_votes = _dashboard_votes_for_user(username)
 	cluster_placements, cluster_cell_owner, cluster_cell_shape, cluster_cell_color = _dashboard_cluster_maps()
 	cluster_scores = {
@@ -96,6 +217,8 @@ def _build_dashboard_state(username):
 	}
 	remaining = None if is_admin else get_user_remaining_ballots(username)
 	current_turn = get_current_placement_user() if final_stage else None
+	turn_deadline_epoch = get_turn_deadline_epoch() if final_stage else 0.0
+	turn_seconds_remaining = max(0, int(math.ceil(turn_deadline_epoch - time.time()))) if final_stage and turn_deadline_epoch > 0 else 0
 	used_shapes = get_user_used_shape_ids(username) if final_stage and not is_admin else []
 	placement_order = get_placement_order() if is_admin else []
 	blocked_cells = sorted(get_blocked_cells())
@@ -141,6 +264,9 @@ def _build_dashboard_state(username):
 		'show_results': show_results,
 		'remaining': remaining,
 		'current_turn': current_turn,
+		'turn_deadline_epoch': turn_deadline_epoch if final_stage else None,
+		'turn_seconds_remaining': turn_seconds_remaining if final_stage else None,
+		'turn_time_limit_seconds': int(FINAL_STAGE_TURN_SECONDS),
 		'is_user_turn': bool(final_stage and not is_admin and current_turn == username),
 		'used_shapes': used_shapes,
 		'placement_order': placement_order,
@@ -155,6 +281,7 @@ def _build_dashboard_state(username):
 		'cells': cells,
 		'all_votes_data': votes_by_cell,
 		'user_votes': user_votes,
+		'user_colors': user_colors,
 	}
 
 
@@ -221,7 +348,7 @@ def login():
 			conn.commit()
 		return redirect(url_for('main.index'))
 
-	return render_template('login.html', logged_in=False, error='Invalid Username or Secret Keyword.')
+	return render_template('login.html', logged_in=False, error='使用者名稱或密碼錯誤。')
 
 
 @main_bp.route('/logout')
@@ -234,7 +361,7 @@ def logout():
 def api_state():
 	username = session.get('username')
 	if not username:
-		return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+		return jsonify({'success': False, 'error': '未授權'}), 401
 	return jsonify({'success': True, 'state': _build_dashboard_state(username)})
 
 
@@ -242,7 +369,7 @@ def api_state():
 def api_events():
 	username = session.get('username')
 	if not username:
-		return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+		return jsonify({'success': False, 'error': '未授權'}), 401
 
 	event_queue = queue.Queue()
 	with _dashboard_lock:
@@ -267,7 +394,7 @@ def api_events():
 @main_bp.route('/api/vote', methods=['POST'])
 def api_vote():
 	if 'username' not in session or session['username'] == ADMIN_USERNAME:
-		return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+		return jsonify({'success': False, 'error': '未授權'}), 401
 
 	username = session['username']
 	data = request.json or {}
@@ -277,30 +404,31 @@ def api_vote():
 	try:
 		amount = int(amount_raw)
 	except (TypeError, ValueError):
-		return jsonify({'success': False, 'error': 'Invalid amount'}), 400
+		return jsonify({'success': False, 'error': '票數數量格式不正確'}), 400
 
 	if amount < 1:
-		return jsonify({'success': False, 'error': 'Amount must be at least 1'}), 400
+		return jsonify({'success': False, 'error': '票數數量至少為 1'}), 400
 
 	if is_cell_blocked(cell_id):
-		return jsonify({'success': False, 'error': 'This cell is unavailable'}), 400
+		return jsonify({'success': False, 'error': '此格不可使用'}), 400
 
 	remaining = get_user_remaining_ballots(username)
 
 	with get_db() as conn:
 		if action == 'add':
 			if remaining < amount:
-				return jsonify({'success': False, 'error': 'No ballots left!'}), 400
+				return jsonify({'success': False, 'error': '剩餘猴子不足！'}), 400
 
 			current_row = conn.execute(
 				'SELECT ballots_spent FROM grid_votes WHERE username = ? AND cell_id = ?',
 				(username, cell_id),
 			).fetchone()
 			current_ballots = current_row['ballots_spent'] if current_row else 0
-			if current_ballots + amount > MAX_BALLOTS_PER_CELL_PER_USER:
+			max_per_cell = _current_per_cell_cap()
+			if current_ballots + amount > max_per_cell:
 				return jsonify({
 					'success': False,
-					'error': f'You can place at most {MAX_BALLOTS_PER_CELL_PER_USER} ballots on a single grid.',
+					'error': f'本輪每格最多可放置 {max_per_cell} 隻猴子。',
 				}), 400
 
 			conn.execute(
@@ -321,7 +449,7 @@ def api_vote():
 			removable = max(0, current_ballots - locked_ballots)
 
 			if removable < amount:
-				return jsonify({'success': False, 'error': 'This grid cannot be decreased any further.'}), 400
+				return jsonify({'success': False, 'error': '此格已無法再減少。'}), 400
 
 			new_ballots = current_ballots - amount
 			if new_ballots > 0:
@@ -348,7 +476,7 @@ def api_vote():
 			else:
 				conn.execute('DELETE FROM grid_votes WHERE username = ? AND cell_id = ?', (username, cell_id))
 		else:
-			return jsonify({'success': False, 'error': 'Invalid action'}), 400
+			return jsonify({'success': False, 'error': '無效操作'}), 400
 
 		conn.commit()
 		updated_row = conn.execute(
@@ -372,6 +500,7 @@ def admin_update_results():
 		return jsonify({'success': False}), 403
 
 	snapshot_locked_votes()
+	increment_voting_round()
 
 	with get_db() as conn:
 		active = get_active_user_registry()
@@ -395,7 +524,7 @@ def admin_update_results():
 
 	save_admin_snapshot(snapshot)
 	_broadcast_dashboard_update('dashboard_update', {'reason': 'admin_update_results'})
-	return jsonify({'success': True, 'message': 'Results updated and ballots reset.'})
+	return jsonify({'success': True, 'message': '結果已更新，猴子數已重置。'})
 
 
 @main_bp.route('/api/admin/start_final_stage', methods=['POST'])
@@ -412,6 +541,8 @@ def admin_start_final_stage():
 
 	placement_order = order_users_by_variance(ballots_by_user)
 	start_final_stage(placement_order)
+	_set_current_turn_deadline()
+	_enforce_final_stage_turn_progress()
 
 	snapshot = {}
 	rows = fetch_ballot_votes()
@@ -433,7 +564,7 @@ def admin_start_final_stage():
 @main_bp.route('/api/place_cluster', methods=['POST'])
 def api_place_cluster():
 	if 'username' not in session or session['username'] == ADMIN_USERNAME:
-		return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+		return jsonify({'success': False, 'error': '未授權'}), 401
 
 	username = session['username']
 	if _is_example_user(username):
@@ -447,11 +578,13 @@ def api_place_cluster():
 		})
 
 	if not is_final_stage_active():
-		return jsonify({'success': False, 'error': 'Final stage is not active'}), 400
+		return jsonify({'success': False, 'error': '最終階段尚未開始'}), 400
+
+	_enforce_final_stage_turn_progress()
 
 	current_user = get_current_placement_user()
 	if username != current_user:
-		return jsonify({'success': False, 'error': 'Not your turn'}), 400
+		return jsonify({'success': False, 'error': '尚未輪到你'}), 400
 
 	data = request.json or {}
 	shape_id = data.get('shape_id')
@@ -460,19 +593,19 @@ def api_place_cluster():
 
 	used_shapes = get_user_used_shape_ids(username)
 	if shape_id in used_shapes:
-		return jsonify({'success': False, 'error': 'Shape already used'}), 400
+		return jsonify({'success': False, 'error': '此板塊已使用'}), 400
 
 	cells = placement_cells(shape_id, anchor, orientation)
 	if len(cells) != 5:
-		return jsonify({'success': False, 'error': 'Invalid placement'}), 400
+		return jsonify({'success': False, 'error': '放置無效'}), 400
 
 	if any(is_cell_blocked(cell) for cell in cells):
-		return jsonify({'success': False, 'error': 'Placement overlaps an unavailable cell'}), 400
+		return jsonify({'success': False, 'error': '放置與不可用格重疊'}), 400
 
 	existing = get_cluster_placements()
 	occupied = {cell for placement in existing for cell in placement['cells']}
 	if any(cell in occupied for cell in cells):
-		return jsonify({'success': False, 'error': 'Placement overlaps existing cluster'}), 400
+		return jsonify({'success': False, 'error': '放置與既有板塊重疊'}), 400
 
 	with get_db() as conn:
 		placeholders = ','.join('?' for _ in cells)
@@ -496,6 +629,8 @@ def api_place_cluster():
 
 	save_cluster_placement(username, shape_id, anchor, orientation, cells, winner, total_ballots if winner else 0)
 	next_user = advance_placement_turn()
+	_set_current_turn_deadline()
+	_enforce_final_stage_turn_progress()
 	_broadcast_dashboard_update('dashboard_update', {
 		'reason': 'cluster_placed',
 		'username': username,

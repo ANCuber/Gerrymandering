@@ -90,6 +90,8 @@ def init_db():
         ''')
         conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('reveal_mode', 'false')")
         conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('final_stage', 'false')")
+        conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('voting_round', '1')")
+        conn.execute("INSERT OR IGNORE INTO system_config (key, value) VALUES ('final_stage_turn_deadline', '0')")
 
         active = get_active_user_registry()
         for user in active:
@@ -128,6 +130,21 @@ def set_config_value(key, value):
     with get_db() as conn:
         conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', (key, value))
         conn.commit()
+
+
+def get_voting_round():
+    raw = get_config_value('voting_round', '1')
+    try:
+        round_number = int(raw)
+    except Exception:
+        round_number = 1
+    return max(1, round_number)
+
+
+def increment_voting_round():
+    next_round = get_voting_round() + 1
+    set_config_value('voting_round', str(next_round))
+    return next_round
 
 
 def is_reveal_mode():
@@ -212,6 +229,23 @@ def advance_placement_turn():
     return order[next_index]
 
 
+def get_turn_deadline_epoch():
+    raw = get_config_value('final_stage_turn_deadline', '0')
+    try:
+        value = float(raw)
+    except Exception:
+        value = 0.0
+    return max(0.0, value)
+
+
+def set_turn_deadline_epoch(epoch_seconds):
+    try:
+        value = float(epoch_seconds)
+    except Exception:
+        value = 0.0
+    set_config_value('final_stage_turn_deadline', str(max(0.0, value)))
+
+
 def skip_current_placement_turn():
     order = get_placement_order()
     if not order:
@@ -229,6 +263,7 @@ def cancel_final_stage():
         conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('final_stage', 'false'))
         conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_order', '[]'))
         conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('placement_index', '0'))
+        conn.execute('INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)', ('final_stage_turn_deadline', '0'))
         conn.commit()
 
 

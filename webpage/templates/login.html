@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 
-{% block title %}Coconut Voting Room — Login{% endblock %}
+{% block title %}椰子投票室 — 登入{% endblock %}
 
 {% block content %}
-    <h1>⬡ Coconut Voting Room ⬡</h1>
+    <h1>⬡ 椰子投票室 ⬡</h1>
     <div class="box">
-        <h3>Enter Secure Game Space</h3>
+        <h3>歡迎來到荒島</h3>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         <form action="{{ url_for('main.login') }}" method="POST">
-            <input type="text" name="username" placeholder="Username" required autocomplete="off"><br>
-            <input type="password" name="secret" placeholder="Secret Keyword" required><br><br>
-            <button type="submit" class="btn">Verify identity</button>
+            <input type="text" name="username" placeholder="使用者名稱" required autocomplete="off"><br>
+            <input type="password" name="secret" placeholder="密碼" required><br><br>
+            <button type="submit" class="btn">登入</button>
         </form>
     </div>
 {% endblock %}

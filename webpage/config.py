@@ -2,6 +2,7 @@ DATABASE = 'voting_game.db'
 
 TOTAL_ALLOWANCE = 100
 MAX_BALLOTS_PER_CELL_PER_USER = 20
+FINAL_STAGE_TURN_SECONDS = 30
 
 # Choose the board layout:
 # - 'standard' for the original symmetric hex board
