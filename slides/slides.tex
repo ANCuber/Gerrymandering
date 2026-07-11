@@ -50,12 +50,13 @@
   \vspace{0.4em}
   % \large
   分配支持者、劃定選區，最終獲取最多的支持者！
-  \begin{figure}[hc]
+  \begin{figure}[hcp]
     \centering
     \includegraphics[width=0.32\textwidth]{blank}
-    \includegraphics[width=0.32\textwidth]{distri}
+    \includegraphics[width=0.32\textwidth]{some}
+    \vfill
     \includegraphics[width=0.32\textwidth]{placement}
-    \label{fig:three-images}
+    \vfill
   \end{figure}
 \end{frame}
 
@@ -63,80 +64,68 @@
 \begin{frame}{島嶼與棲地} 
   \vspace{0.4em}
   \large
-  \textbf{島嶼}最初為一個由六角塊組合而成的地圖，一個六角塊則相當於島上的一塊\textbf{棲地}。
+    一個六角形的網格為一塊\textbf{棲地}，許多棲地共同組成\textbf{島嶼}。
 \vspace{0.4em}
 
 \centering
-\includegraphics[width=0.32\textwidth]{blank}
+\includegraphics[width=0.5\textwidth]{blank}
 \end{frame}
 
 % page 
 \begin{frame}{猴子}
   \vspace{0.4em}
     \large
-    \text{猴子}是島上的居民，居住於棲地內。此外，每隻猴子都會有各自支持的小隊。
+    每隻\text{猴子}代表支持某小隊的勢力，可以把猴子分配到棲地上。
+
 \vspace{0.4em}
 
 \centering
-\includegraphics[width=0.32\textwidth]{ballots}
-\end{frame}
-
-% page 
-\begin{frame}{棲地單調條款}
-  \vspace{0.4em}
-  \large
-  某個階段後（後續將詳述），同一棲地內的猴子會轉而支持原先在該棲地內獲得多數支持的小隊，即在棲地內贏者全拿。
-\vspace{0.4em}
-
-    \centering
-    \includegraphics[width=0.32\textwidth]{distri}
-\end{frame}
-
-% page 
-\begin{frame}{蠑螈法案}
-  \vspace{0.4em}
-  \large
-  最終多個相連的棲地可能被統一計算，在其中佔猴子支持度絕對多數的小隊可以獲得相等於這些棲地內猴子總數的票數。
-  \vspace{0.4em}
-
-    \centering
-    \includegraphics[width=0.32\textwidth]{placement}
+% \includegraphics[width=0.32\textwidth]{ballots}
+\includegraphics[width=0.5\textwidth]{some}
 \end{frame}
 
 % page 
 \begin{frame}{遊戲流程}
   \vspace{0.4em}
   \large
-  遊戲共有兩個階段，第一個階段小隊要在島嶼的各個棲地上分配自己的支持者，第二階段則是將多個棲地劃到一起，一起的棲地最終將被統一計算支持度。
+  遊戲共有兩個階段，第一階段小隊要在島嶼的各個棲地上分配自己的支持者，第二階段則是將多個棲地用板塊劃到一起，試圖讓板塊中多數的猴子都支持自己。
 \end{frame}
 
 % page 
-\begin{frame}{階段一：拉幫結社}
+\begin{frame}{階段一：分配勢力}
   \vspace{0.4em}
   \begin{itemize}
-    \item \textbf{目標：}小隊分配支持自己的猴子到各個棲地上
-    \item 共進行三輪
+    \item 共進行三輪，每輪 3 分鐘
     \item 每輪每隊最多可以分配 100 隻猴子
-    \item 前兩輪結束時會公布所有小隊的分配情形
-    \item 每一輪分配時間 3 分鐘，中途不暫停
+    \item 第一輪每格每隊最多放 20 隻猴子、第二輪 25 隻、第三輪 30 隻
+    \item 前兩輪結束皆會公布所有小隊的分配情形
   \end{itemize}
+\vspace{0.4em}
+
+    \centering
+    \includegraphics[width=0.6\textwidth]{anno}
 \end{frame}
 
 % page 
-\begin{frame}{階段一：拉幫結社}
+\begin{frame}{搶奪他人的猴子！}
   \vspace{0.4em}
+    同一棲地內的猴子會轉而支持原先在該棲地內獲得多數支持的小隊
   \begin{itemize}
-    \item 第三輪結束時將結算猴子的支持狀況
+    \item 三輪結束後將進行猴子內戰
     \item 每個棲地內有最多數量猴子的小隊將可以獲得該棲地內所有猴子
     \item 若不存在絕對多數，則棲地內所有猴子都會集體消失
   \end{itemize}
+\vspace{0.4em}
+
+    \centering
+    \includegraphics[width=0.6\textwidth]{distri}
 \end{frame}
 
 % page 
-\begin{frame}{階段二：搶奪地盤}
+\begin{frame}{階段二：傑利蠑螈}
   \vspace{0.4em}
   \begin{itemize}
-    \item 每個小隊有一些包含五個相連棲地的板塊
+    \item 每個小隊有一些包含五個相連棲地的板塊，階段ㄧ即可預覽
     \item 小隊依\textbf{階段一}放置猴子的變異數由大至小輪流放板塊
     \begin{itemize}
       \item 只考慮有放的格子
@@ -146,16 +135,22 @@
   \vspace{0.4em}
 
     \centering
-    \includegraphics[width=0.32\textwidth]{clusters}
+    \includegraphics[width=0.55\textwidth]{clusters}
 \end{frame}
 
 % page 
-\begin{frame}{階段二：搶奪地盤}
+\begin{frame}{俗話說得蠑螈者得天下}
   \vspace{0.4em}
   \begin{itemize}
-    \item 板塊框住的棲地適用\textbf{蠑螈法案}
-    \item 每組板塊內有最多猴子的小隊獲得相等於猴子總數的分數
+    \item 五格內有最多猴子支持的小隊獨得所有猴子
+    \item 點兩下可以旋轉板塊、拖曳可以放置
+    \item 注意時間！！！
   \end{itemize}
+
+  \vspace{0.4em}
+
+    \centering
+    \includegraphics[width=0.55\textwidth]{placement}
 \end{frame}
 
 % page 
@@ -170,16 +165,16 @@
 \begin{tabular}{|c|c|}
 \hline
     \textbf{名次} & \textbf{分數} \\ \hline
-    ㄧ & 25 \\ \hline
-    二 & 21 \\ \hline
-    三 & 18 \\ \hline
-    四 & 15 \\ \hline
-    五 & 12 \\ \hline
-    六 & 10 \\ \hline
-    七 & 8 \\ \hline
-    八 & 6 \\ \hline
-    九 & 5 \\ \hline
-    十 & 4 \\ \hline
+    ㄧ & 10 \\ \hline
+    二 & 9 \\ \hline
+    三 & 8 \\ \hline
+    四 & 7 \\ \hline
+    五 & 6 \\ \hline
+    六 & 5 \\ \hline
+    七 & 4 \\ \hline
+    八 & 3 \\ \hline
+    九 & 2 \\ \hline
+    十 & 1 \\ \hline
 \end{tabular}
 \label{tab:example}
 \end{table}
@@ -189,8 +184,12 @@
 \begin{frame}{LINK}
   \vspace{0.4em}
   \centering
-  
-  \texttt{https://csiecamp.csie.org/gerrymandering}
+
+\begin{itemize}
+  \item \texttt{https://csiecamp.csie.org/gerrymandering}
+    \item 帳密：\texttt{group\#}
+    \item 請每隊使用\textbf{一台電腦}登入
+\end{itemize}
   
 \end{frame}
 
