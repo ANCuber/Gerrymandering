@@ -144,6 +144,23 @@
         text-shadow: 0 0 14px rgba(255, 255, 255, 0.24);
     }
 
+    .skip-turn-btn {
+        margin-top: 10px;
+        border: 1px solid #3a3a47;
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: #252530;
+        color: #f5f5fb;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .skip-turn-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
     .play-layout {
         display: flex;
         align-items: flex-start;
@@ -382,6 +399,7 @@
         const voteApiUrl = {{ url_for('main.api_vote')|tojson }};
         const clusterPreviewUrl = {{ url_for('main.api_cluster_preview')|tojson }};
         const placeClusterUrl = {{ url_for('main.api_place_cluster')|tojson }};
+        const skipTurnUrl = {{ url_for('main.api_skip_turn')|tojson }};
         const dashboardState = {
             currentUser,
             isAdmin: false,
@@ -971,6 +989,9 @@
                 const selectedInfo = (state.isUserTurn || state.isExampleUser)
                     ? '<p id="selected-shape-info" style="margin-top: 10px; font-size: 13px; color: #c1c1c8;">已選板塊：<strong id="selected-shape">無</strong>。</p>'
                     : '';
+                const skipButton = (state.isUserTurn && !state.isExampleUser)
+                    ? '<button type="button" class="skip-turn-btn" id="skip-turn-btn">結束本回合（跳過）</button>'
+                    : '';
                 const timerLine = state.isUserTurn
                     ? `<p class="turn-timer-line">本回合剩餘時間：<span class="turn-timer-value">${Number.isFinite(state.turnSecondsRemaining) ? state.turnSecondsRemaining : 0} 秒</span> <span class="turn-timer-limit">/ ${state.turnTimeLimitSeconds || 0} 秒</span></p>`
                     : '';
@@ -981,6 +1002,7 @@
                     <p class="user-score-line">你的分數：<strong class="user-score-value">${(state.clusterScores || {})[state.currentUser] || 0}</strong></p>
                     <p style="margin-top: 5px; font-size: 13px; color: #c1c1c8;">分數：${scoreSummary}</p>
                     ${selectedInfo}
+                    ${skipButton}
                 `;
                 return;
             }
@@ -1031,6 +1053,7 @@
             }
 
             renderUserStatusSection(dashboardState);
+            bindSkipTurnButton();
             renderClusterPalette();
             renderVoteTokens();
             updateCells(dashboardState);
@@ -1042,6 +1065,40 @@
                 clearAnchorSelection();
                 document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
             }
+        }
+
+        function bindSkipTurnButton() {
+            const skipTurnButton = document.getElementById('skip-turn-btn');
+            if (!skipTurnButton || skipTurnButton.dataset.bound === 'true') {
+                return;
+            }
+
+            skipTurnButton.dataset.bound = 'true';
+            skipTurnButton.addEventListener('click', () => {
+                skipTurnButton.disabled = true;
+                fetch(skipTurnUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        selectedShape = null;
+                        selectedAnchor = null;
+                        clearAnchorSelection();
+                        document.querySelectorAll('.cluster-card.selected').forEach(selected => selected.classList.remove('selected'));
+                        refreshDashboardState();
+                    } else {
+                        skipTurnButton.disabled = false;
+                        alert(data.error || '無法跳過本回合。');
+                    }
+                })
+                .catch(err => {
+                    console.error('跳過回合失敗', err);
+                    skipTurnButton.disabled = false;
+                    alert('跳過回合失敗。');
+                });
+            });
         }
 
         async function refreshDashboardState() {

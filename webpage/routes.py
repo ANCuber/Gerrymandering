@@ -673,6 +673,28 @@ def api_place_cluster():
 	})
 
 
+@main_bp.route('/api/skip_turn', methods=['POST'])
+def api_skip_turn():
+	if 'username' not in session or session['username'] == ADMIN_USERNAME:
+		return jsonify({'success': False, 'error': '未授權'}), 401
+
+	username = session['username']
+	if not is_final_stage_active():
+		return jsonify({'success': False, 'error': '最終階段尚未開始'}), 400
+
+	_enforce_final_stage_turn_progress()
+	current_user = get_current_placement_user()
+	if username != current_user:
+		return jsonify({'success': False, 'error': '尚未輪到你'}), 400
+
+	next_user = advance_placement_turn()
+	_set_current_turn_deadline()
+	_enforce_final_stage_turn_progress()
+	_broadcast_dashboard_update('dashboard_update', {'reason': 'turn_skipped_by_user'})
+
+	return jsonify({'success': True, 'next_user': next_user})
+
+
 @main_bp.route('/api/cluster_preview', methods=['POST'])
 def api_cluster_preview():
 	if 'username' not in session or session['username'] == ADMIN_USERNAME:

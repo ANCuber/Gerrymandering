@@ -225,3 +225,30 @@ def test_cluster_preview_shows_winner_without_cells(client):
     assert 'score_gain' in payload
     assert 'win_margin' in payload
     assert 'cells' not in payload
+
+
+def test_user_can_skip_own_turn_in_final_stage(client):
+    with get_db() as conn:
+        conn.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('final_stage', 'true')")
+        conn.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('placement_order', '[\"group1\", \"group2\"]')")
+        conn.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('placement_index', '0')")
+        conn.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('final_stage_turn_deadline', '9999999999')")
+        conn.commit()
+
+    client.post(
+        '/gerrymandering/login',
+        data={'username': 'group1', 'secret': 'group1'},
+        follow_redirects=False,
+    )
+
+    skip_response = client.post('/gerrymandering/api/skip_turn', json={})
+    assert skip_response.status_code == 200
+    skip_payload = skip_response.get_json()
+    assert skip_payload['success'] is True
+    assert skip_payload['next_user'] == 'group2'
+
+    state_response = client.get('/gerrymandering/api/state')
+    assert state_response.status_code == 200
+    state_payload = state_response.get_json()
+    assert state_payload['success'] is True
+    assert state_payload['state']['current_turn'] == 'group2'
